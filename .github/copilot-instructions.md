@@ -527,6 +527,228 @@ Users can:
 
 ---
 
+# Reference Investigation Case
+
+When designing endpoints, prefer a real public investigative case with publicly available documents instead of inventing a synthetic one.
+
+Use the FTX collapse and fraud investigation as the canonical reference case because it has bankruptcy filings, court documents, SEC complaints, public statements, news reporting, internal communications discussed in filings, and corporate structure records.
+
+The workflow should look like this:
+
+1. Create a case such as `FTX Investigation`.
+2. Upload evidence like SEC complaints, bankruptcy filings, news articles, corporate structure CSVs, and screenshots.
+3. Trigger a pipeline that performs document parsing, OCR, chunking, entity extraction, relationship extraction, timeline extraction, embeddings, and graph construction.
+4. Surface entities, relationships, timelines, contradictions, discoveries, and hypotheses progressively in the UI.
+5. Make the evidence graph and timeline appear before chat; use chat only as a later investigative lens.
+
+Canonical endpoint map:
+
+- `POST /api/cases/:caseId/evidence/upload`
+- `GET /api/cases/:caseId/entities`
+- `GET /api/cases/:caseId/relationships`
+- `GET /api/cases/:caseId/timeline`
+- `GET /api/cases/:caseId/contradictions`
+- `GET /api/cases/:caseId/discoveries`
+- `GET /api/cases/:caseId/hypotheses`
+- `GET /api/hypotheses/:id/evidence-chain`
+- `POST /api/cases/:caseId/ask`
+
+Model the response shape around provenance and explainability. For example:
+
+- Entities should include `id`, `name`, and `type`.
+- Relationships should include source, target, type, confidence, and source citations.
+- Timeline events should include date, title, and supporting evidence.
+- Contradictions should include severity and the conflicting sources.
+- Hypotheses should include confidence, supporting evidence, contradicting evidence, and missing evidence.
+
+Domain areas to build as first-class backend modules:
+
+- Authentication
+- Cases
+- Evidence
+- Documents
+- Entities
+- Relationships
+- Timeline
+- Contradictions
+- Discoveries
+- Hypotheses
+- Graph
+- Search
+- Chat
+- Reports
+
+For the UI, the FTX case should create a case tree, evidence list, entity graph, timeline, contradiction center, hypothesis lab, and evidence chain views immediately after ingestion.
+
+---
+
+# Domain-Driven API Architecture
+
+Favor bounded contexts over a single `/cases/:id/*` surface. Everything can be filtered by `caseId`, but the ownership stays with the module.
+
+Bounded contexts:
+
+```
+Cases
+Evidence
+Knowledge Graph
+Timeline
+Reasoning
+AI
+Collaboration
+Reports
+```
+
+Suggested module layout:
+
+```
+src/modules
+   auth
+   users
+   cases
+   evidence
+   graph
+   timeline
+   reasoning
+   ai
+   reports
+   collaboration
+   notifications
+```
+
+Cases are containers only. They expose stats, not the data itself.
+
+```
+GET    /cases
+POST   /cases
+GET    /cases/:caseId
+PATCH  /cases/:caseId
+DELETE /cases/:caseId
+GET    /cases/:caseId/stats
+```
+
+Evidence is its own module for uploads, OCR, parsing, chunking, and sources.
+
+```
+POST   /evidence
+GET    /evidence
+GET    /evidence/:id
+DELETE /evidence/:id
+GET    /evidence/:id/chunks
+GET    /evidence/:id/sources
+```
+
+Graph is the product. Keep entities, relationships, and graph views here.
+
+```
+GET    /entities
+GET    /entities/:id
+PATCH  /entities/:id
+DELETE /entities/:id
+
+GET    /relationships
+GET    /relationships/:id
+PATCH  /relationships/:id
+DELETE /relationships/:id
+
+GET    /graph
+GET    /graph/entities/:entityId/neighbors
+GET    /graph/path?from=entityA&to=entityB
+```
+
+Timeline grows fast, so keep it isolated.
+
+```
+GET    /events
+POST   /events
+GET    /events/:id
+PATCH  /events/:id
+
+POST   /timeline/rebuild
+GET    /timeline
+GET    /timeline/entities/:entityId
+```
+
+Reasoning is independent from AI. It owns contradictions, hypotheses, and discoveries.
+
+```
+GET    /contradictions
+GET    /contradictions/:id
+PATCH  /contradictions/:id
+POST   /contradictions/recalculate
+
+GET    /hypotheses
+POST   /hypotheses
+GET    /hypotheses/:id
+PATCH  /hypotheses/:id
+DELETE /hypotheses/:id
+GET    /hypotheses/:id/support
+GET    /hypotheses/:id/opposition
+
+GET    /discoveries
+GET    /discoveries/:id
+```
+
+AI remains a replaceable adapter layer and does not own business logic.
+
+```
+POST   /ai/chat
+POST   /ai/research
+POST   /ai/summarize
+POST   /ai/extract
+```
+
+Jobs quickly become necessary for OCR, embeddings, and graph builds.
+
+```
+GET    /jobs
+GET    /jobs/:id
+POST   /jobs
+```
+
+Reports and collaboration are separate bounded contexts.
+
+```
+POST   /reports
+GET    /reports
+GET    /reports/:id
+
+GET    /members
+POST   /members
+DELETE /members/:id
+
+GET    /comments
+POST   /comments
+
+GET    /annotations
+POST   /annotations
+```
+
+If starting lean, build only:
+
+```
+Cases, Evidence, Graph, Timeline, Reasoning, AI
+```
+
+Core MVP routes:
+
+```
+GET/POST /cases
+POST/GET /evidence
+GET /entities
+GET /relationships
+GET /graph
+GET /events
+GET /timeline
+GET /contradictions
+GET /hypotheses
+POST /ai/chat
+```
+
+This keeps responsibilities clean while still allowing filtering by `caseId` for every resource.
+
+---
+
 # AI System Design
 
 The AI should operate as a collection of specialized agents.
