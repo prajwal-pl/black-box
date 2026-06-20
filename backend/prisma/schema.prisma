@@ -1,332 +1,108 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+    provider = "prisma-client"
+    output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "postgresql"
+    provider = "postgresql"
 }
-
-// model User {
-//   id        String   @id @default(uuid())
-//   email     String   @unique
-//   name      String?
-//   cases     Case[]
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-// model Case {
-//   id          String   @id @default(uuid())
-//   title       String
-//   description String?
-//   status      String   @default("open")
-//   user        User     @relation(fields: [userId], references: [id])
-//   userId      String
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
-// }
 
 enum CaseStatus {
-  ACTIVE
-  ARCHIVED
-  CLOSED
-}
-
-enum CaseRole {
-  OWNER
-  EDITOR
-  VIEWER
-}
-
-enum DocumentStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
+    ACTIVE
+    ARCHIVED
+    CLOSED
 }
 
 enum HypothesisStatus {
-  ACTIVE
-  CONFIRMED
-  REJECTED
+    ACTIVE
+    CONFIRMED
+    REJECTED
 }
 
 enum Severity {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
+    LOW
+    MEDIUM
+    HIGH
+    CRITICAL
 }
 
-enum ContradictionStatus {
-  OPEN
-  RESOLVED
-  DISMISSED
-}
-
-enum ReportType {
-  PDF
-  DOCX
-  MARKDOWN
-}
-
-enum ReportStatus {
-  PENDING
-  COMPLETED
-  FAILED
-}
-
-enum JobType {
-  OCR
-  EMBEDDING
-  ENTITY_EXTRACTION
-  RELATIONSHIP_EXTRACTION
-  TIMELINE_BUILD
-  CONTRADICTION_SCAN
-  HYPOTHESIS_GENERATION
-  REPORT_GENERATION
-}
-
-enum JobStatus {
-  QUEUED
-  RUNNING
-  COMPLETED
-  FAILED
+enum TeamRole {
+    OWNER
+    EDITOR
+    VIEWER
 }
 
 model User {
-  id    String  @id @default(cuid())
-  email String  @unique
-  name  String?
-  image String?
+    id       String  @id @default(uuid())
+    email    String  @unique
+    name     String?
+    image    String?
+    password String
 
-  cases CaseMember[]
+    cases           Case[]
+    teamMemberships TeamMember[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Team {
+    id   String @id @default(uuid())
+    name String
+
+    members TeamMember[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model TeamMember {
+    userId String
+    teamId String
+    role   TeamRole @default(VIEWER)
+
+    user User @relation(fields: [userId], references: [id])
+    team Team @relation(fields: [teamId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@id([userId, teamId])
 }
 
 model Case {
-  id String @id @default(cuid())
+    id         String       @id @default(uuid())
+    name       String
+    status     CaseStatus   @default(ACTIVE)
+    user       User         @relation(fields: [userId], references: [id])
+    userId     String
+    severity   Severity     @default(LOW)
+    evidence   Evidence[]
+    hypotheses Hypothesis[]
 
-  title       String
-  description String?
-
-  status CaseStatus @default(ACTIVE)
-
-  documents Document[]
-  events    Event[]
-
-  hypotheses     Hypothesis[]
-  contradictions Contradiction[]
-
-  notes   Note[]
-  reports Report[]
-
-  members CaseMember[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
-}
-
-model CaseMember {
-  id String @id @default(cuid())
-
-  caseId String
-  userId String
-
-  role CaseRole
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@unique([caseId, userId])
-}
-
-model Document {
-  id String @id @default(cuid())
-
-  caseId String
-
-  title String
-
-  filename String
-
-  mimeType String
-
-  storageKey String
-
-  size BigInt
-
-  status DocumentStatus @default(PENDING)
-
-  pageCount Int?
-
-  metadata Json?
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  evidence Evidence[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([caseId])
-  @@index([status])
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 model Evidence {
-  id String @id @default(cuid())
+    id          String  @id @default(uuid())
+    caseId      String
+    description String?
+    fileUrl     String
+    case        Case    @relation(fields: [caseId], references: [id])
 
-  caseId String
-
-  documentId String?
-
-  title String?
-
-  content String @db.Text
-
-  confidence Float?
-
-  sourcePage Int?
-
-  metadata Json?
-
-  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@index([documentId])
-}
-
-model Event {
-  id String @id @default(cuid())
-
-  caseId String
-
-  title String
-
-  description String?
-
-  occurredAt DateTime
-
-  confidence Float?
-
-  metadata Json?
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@index([caseId])
-  @@index([occurredAt])
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 model Hypothesis {
-  id String @id @default(cuid())
+    id         String           @id @default(uuid())
+    caseId     String
+    content    String
+    confidence Float
+    status     HypothesisStatus @default(ACTIVE)
+    case       Case             @relation(fields: [caseId], references: [id])
 
-  caseId String
-
-  title String
-
-  description String @db.Text
-
-  confidence Float?
-
-  status HypothesisStatus @default(ACTIVE)
-
-  metadata Json?
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([caseId])
-}
-
-model Contradiction {
-  id String @id @default(cuid())
-
-  caseId String
-
-  title String
-
-  description String @db.Text
-
-  severity Severity
-
-  status ContradictionStatus @default(OPEN)
-
-  metadata Json?
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([caseId])
-}
-
-model Note {
-  id String @id @default(cuid())
-
-  caseId String
-
-  title String?
-
-  content String @db.Text
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([caseId])
-}
-
-model Report {
-  id String @id @default(cuid())
-
-  caseId String
-
-  title String
-
-  type ReportType
-
-  storageKey String
-
-  status ReportStatus
-
-  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@index([caseId])
-}
-
-model Job {
-  id String @id @default(cuid())
-
-  type JobType
-
-  status JobStatus
-
-  progress Int @default(0)
-
-  payload Json?
-
-  result Json?
-
-  error String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
