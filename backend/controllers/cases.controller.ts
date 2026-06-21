@@ -17,10 +17,23 @@ export const getCases: RequestHandler = async (req, res) => {
     }
 }
 
-export const createCase: RequestHandler = (req, res) => {
+export const createCase: RequestHandler = async (req, res) => {
     const { name, description } = req.body;
-    // const userId = req.userId; 
+    const userId = req.userId;
     try {
+        if (!name || !description) {
+            return res.status(400).json({ message: "Name and description are required" });
+        }
+
+        const newCase = await db.case.create({
+            data: {
+                name,
+                description,
+                userId: userId as string,
+            },
+        });
+
+        res.status(201).json({ message: "Case created successfully", case: newCase });
 
     } catch (error) {
         console.error("Error creating case:", error);
