@@ -41,7 +41,30 @@ export const createCase: RequestHandler = async (req, res) => {
     }
 }
 
-export const getCaseById: RequestHandler = (req, res) => { }
+export const getCaseById: RequestHandler = async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (!id) {
+            return res.status(400).json({ message: "Case ID is required" });
+        }
+
+        const caseItem = await db.case.findUnique({
+            where: {
+                id: id as string
+            },
+        });
+
+        if (!caseItem) {
+            return res.status(404).json({ message: "Case not found" });
+        }
+
+        res.json({ message: "Case fetched successfully", case: caseItem });
+
+    } catch (error) {
+        console.error("Error fetching case by ID:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
 
 export const updateCase: RequestHandler = (req, res) => { }
 
