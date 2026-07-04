@@ -9,4 +9,4 @@ export const redisConfig: RedisOptions = {
     enableReadyCheck: true, // Enable ready check to ensure the connection is established
 }
 
-export const createRedisConnection = new Redis(redisConfig);
+export const createRedisConnection = () => new Redis(redisConfig);
