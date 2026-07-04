@@ -26,6 +26,13 @@ enum Severity {
     CRITICAL
 }
 
+enum EvidenceStatus {
+    PENDING
+    PROCESSING
+    COMPLETED
+    FAILED
+}
+
 enum TeamRole {
     OWNER
     EDITOR
@@ -85,11 +92,15 @@ model Case {
 }
 
 model Evidence {
-    id          String  @id @default(uuid())
+    id          String         @id @default(uuid())
     caseId      String
     description String?
+    fileName    String
     fileUrl     String
-    case        Case    @relation(fields: [caseId], references: [id])
+    mimeType    String
+    storageKey  String
+    status      EvidenceStatus @default(PENDING)
+    case        Case           @relation(fields: [caseId], references: [id])
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
