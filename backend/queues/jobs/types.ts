@@ -72,3 +72,46 @@ export interface ClassifyEvidencePayload extends BaseJobPayload {
     storageKey: string
     mimeType: string
 }
+
+export interface ProcessEvidencePayload extends BaseJobPayload {
+    storageKey: string
+    evidenceType: EvidenceTypes
+}
+
+export interface ExtractEntitiesPayload extends BaseJobPayload {
+    normalizedTextKey: string
+}
+
+export interface UpdateGraphPayload extends BaseJobPayload {
+    extractionResultKey: string
+}
+
+export interface GenerateEmbeddingsPayload extends BaseJobPayload {
+    chunkKeys: string[]
+}
+
+export interface UpdateHypothesesPayload {
+    caseId: string
+    triggerReason: "new-evidence" | "contradiction-detected" | "manual"
+    newEvidenceCount?: number
+}
+
+export interface ScanContradictionsPayload {
+    caseId: string
+    evidenceId: string
+}
+
+export interface MergeEntitiesPayload {
+    caseId: string
+    entityIds: string[]
+    canonicalId: string
+}
+
+export interface DeadLetterPayload {
+    originalQueue: string
+    originalJobName: string
+    originalPayload: any
+    failureReason: string
+    failedAt: Date
+    attempts: number
+}
