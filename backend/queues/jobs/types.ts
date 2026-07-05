@@ -18,6 +18,8 @@ export const JOB_NAMES = {
     PROCESS_TEXT: "process-text",
     PROCESS_SPREADSHEET: "process-spreadsheet",
     PROCESS_EMAIL: "process-email",
+    PROCESS_AUDIO: "process-audio",
+    PROCESS_VIDEO: "process-video",
 
     // Graph Queue
     UPDATE_GRAPH: "update-graph",
@@ -50,3 +52,23 @@ export const JOB_PRIORITY = {
     REPORTS: 5,
     CLEANUP: 1
 } as const
+
+export interface BaseJobPayload {
+    caseId: string
+    evidenceId: string
+    processorVersion: string
+    extractionVersion?: string
+}
+
+export interface UploadEvidencePayload extends BaseJobPayload {
+    storageKey: string
+    mimeType: string
+    fileName: string
+    fileSize: number
+    uploadedBy: string
+}
+
+export interface ClassifyEvidencePayload extends BaseJobPayload {
+    storageKey: string
+    mimeType: string
+}
