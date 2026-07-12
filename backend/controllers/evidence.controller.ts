@@ -29,7 +29,7 @@ export const uploadEvidence: RequestHandler = async (req, res) => {
                 mimeType: file.mimetype,
                 status: "PENDING",
             }
-        })
+        });
 
         await EvidenceQueueService.enqueueEvidenceUpload({
             caseId: caseId,
@@ -40,12 +40,55 @@ export const uploadEvidence: RequestHandler = async (req, res) => {
             mimeType: file.mimetype,
             uploadedBy: userId!,
             processorVersion: "1.0.0"
-        })
+        });
 
         res.status(202).json({ message: "Evidence uploaded and queued for processing", evidenceId: evidence.id, status: "PENDING" });
 
     } catch (error) {
-        console.log("")
+        console.error("Failed to upload evidence:", error);
         res.status(500).json({ error: "Failed to upload evidence" });
+    }
+}
+
+export const getEvidenceStatus: RequestHandler = async (req, res) => {
+    try {
+        const { id } = req.params as { id: string };
+        const evidence = await db.evidence.findUnique({ where: { id } });
+        if (!evidence) {
+            return res.status(404).json({ error: "Evidence not found" });
+        }
+        res.json({ id: evidence.id, status: evidence.status });
+    } catch (error) {
+        console.error("Failed to get evidence status:", error);
+        res.status(500).json({ error: "Failed to get evidence status" });
+    }
+}
+
+export const getEvidenceByCase: RequestHandler = async (req, res) => {
+    try {
+        const { caseId } = req.params as { caseId: string };
+        const evidence = await db.evidence.findMany({ where: { caseId } });
+        res.json({ evidence });
+    } catch (error) {
+        console.error("Failed to get evidence by case:", error);
+        res.status(500).json({ error: "Failed to get evidence by case" });
+    }
+}
+
+export const deleteEvidence: RequestHandler = async (req, res) => {
+    try {
+        const { id } = req.params as { id: string };
+        const evidence = await db.evidence.findUnique({ where: { id } });
+        if (!evidence) {
+            return res.status(404).json({ error: "Evidence not found" });
+        }
+
+        await StorageService.delete(evidence.storageKey);
+        await db.evidence.delete({ where: { id } });
+
+        res.json({ message: "Evidence deleted successfully" });
+    } catch (error) {
+        console.error("Failed to delete evidence:", error);
+        res.status(500).json({ error: "Failed to delete evidence" });
     }
 }

@@ -18,7 +18,7 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
             if (err) {
                 return res.status(403).json({ message: "Invalid access token" });
             }
-            req.userId = userId as string;
+            req.userId = (userId as { userId: string }).userId
             next();
         });
     } catch (error) {

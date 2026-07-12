@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 
 import authRoutes from "./routes/auth";
 import casesRoutes from "./routes/cases";
+import evidenceRoutes from "./routes/evidence";
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 
 app.use("/auth", authRoutes);
 app.use("/cases", casesRoutes);
+app.use("/", evidenceRoutes);
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);

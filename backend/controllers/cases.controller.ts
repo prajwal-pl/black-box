@@ -18,17 +18,16 @@ export const getCases: RequestHandler = async (req, res) => {
 }
 
 export const createCase: RequestHandler = async (req, res) => {
-    const { name, description } = req.body;
+    const { name } = req.body;
     const userId = req.userId;
     try {
-        if (!name || !description) {
-            return res.status(400).json({ message: "Name and description are required" });
+        if (!name) {
+            return res.status(400).json({ message: "Name is required" });
         }
 
         const newCase = await db.case.create({
             data: {
                 name,
-                description,
                 userId: userId as string,
             },
         });
