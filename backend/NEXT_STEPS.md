@@ -31,8 +31,6 @@
 ## Build Order
 
 
-Copy
-markdown
 StorageService ← no deps, everything needs it
 
 Fix Neo4j driver singleton ← needed by graph processor
@@ -61,46 +59,47 @@ Wire all routes in index.ts ← last, just registration
 ```bash
 bun add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 
-Copy
+```
 MinIO for Development
 Run once with Docker:
 
+```bash
 docker run -d --name minio \
   -p 9000:9000 -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin \
   minio/minio server /data --console-address ":9001"
 
-Copy
-bash
 Then open http://localhost:9001, log in with minioadmin / minioadmin, create a bucket called blackbox.
 
+```
 Dev .env additions:
 
+```env
 STORAGE_ENDPOINT=http://localhost:9000
 STORAGE_REGION=us-east-1
 STORAGE_ACCESS_KEY=minioadmin
 STORAGE_SECRET_KEY=minioadmin
 STORAGE_BUCKET=blackbox
 
-Copy
-env
+```
 Cloudflare R2 for Production
 R2 is S3-compatible. Same SDK, different credentials. No egress fees — important since workers download files constantly.
 
 Prod .env:
 
+```env
 STORAGE_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 STORAGE_REGION=auto
 STORAGE_ACCESS_KEY=<r2-access-key>
 STORAGE_SECRET_KEY=<r2-secret-key>
 STORAGE_BUCKET=blackbox
 
-Copy
-env
+```
 Zero code changes between dev and prod — only env vars swap.
 
 services/storage.service.ts
+```typescript
 import {
     S3Client,
     PutObjectCommand,
@@ -151,12 +150,12 @@ export class StorageService {
 }
 
 
-Copy
-typescript
+```
 Step 2 — Fix Neo4j Driver
 Current lib/graph-driver.ts creates a driver, logs server info, then immediately closes it. It needs to be a singleton like lib/db.ts.
 
 lib/graph-driver.ts
+```typescript
 import neo4j from "neo4j-driver";
 
 const driver = neo4j.driver(
@@ -166,8 +165,7 @@ const driver = neo4j.driver(
 
 export default driver;
 
-Copy
-typescript
+```
 Usage in any processor:
 
 import driver from "../../lib/graph-driver";
@@ -179,18 +177,17 @@ await session.run(
 );
 await session.close();
 
-Copy
-typescript
 Step 3 — Evidence Upload Route + Controller
 Install
+```bash
 bun add multer uuid
 bun add -d @types/multer @types/uuid
 
-Copy
-bash
+```
 The upload route is the only place where storage + DB + queue all meet. Strictly sequential — if any step fails, nothing downstream runs.
 
 controllers/evidence.controller.ts
+```typescript
 import { type RequestHandler } from "express";
 import { v4 as uuid } from "uuid";
 import { StorageService } from "../services/storage.service";
@@ -263,8 +260,6 @@ export const deleteEvidence: RequestHandler = async (req, res) => {
 };
 
 
-Copy
-typescript
 routes/evidence.ts
 import express from "express";
 import multer from "multer";
@@ -289,8 +284,7 @@ router.delete("/evidence/:id", authenticateToken, deleteEvidence);
 
 export default router;
 
-Copy
-typescript
+```
 Failure Handling
 Step fails	Result	Recovery
 Storage upload fails	Return 500, nothing written to DB or queue	Client retries the request
@@ -298,11 +292,11 @@ DB create fails	Orphaned file in storage	Maintenance CLEANUP_JOBS detects and de
 Enqueue fails	DB record stuck at PENDING forever	Maintenance CLEANUP_JOBS re-enqueues stale PENDING records
 Step 4 — Processing Processors + Worker
 Install
+```bash
 bun add pdf-parse xlsx
 bun add -d @types/pdf-parse
 
-Copy
-bash
+```
 The ingestion processor already dispatches to processingQueue with the correct job name. These processors receive those jobs, download the file, extract/normalize text, upload the result, then dispatch to the graph queue.
 
 Storage key convention:
@@ -314,6 +308,7 @@ Normalized text: cases/<caseId>/normalized/<evidenceId>.txt
 Extraction result: cases/<caseId>/extractions/<evidenceId>.json
 
 queues/processors/processing/pdf.processor.ts
+```typescript
 import type { Job } from "bullmq";
 import pdfParse from "pdf-parse";
 import { StorageService } from "../../../services/storage.service";
@@ -347,8 +342,6 @@ export class PdfProcessor {
 }
 
 
-Copy
-typescript
 queues/processors/processing/image.processor.ts
 import type { Job } from "bullmq";
 import Tesseract from "tesseract.js";
@@ -383,8 +376,6 @@ export class ImageProcessor {
 }
 
 
-Copy
-typescript
 queues/processors/processing/text.processor.ts
 import type { Job } from "bullmq";
 import { StorageService } from "../../../services/storage.service";
@@ -416,8 +407,6 @@ export class TextProcessor {
 }
 
 
-Copy
-typescript
 queues/processors/processing/spreadsheet.processor.ts
 import type { Job } from "bullmq";
 import * as XLSX from "xlsx";
@@ -462,8 +451,6 @@ export class SpreadsheetProcessor {
 }
 
 
-Copy
-typescript
 queues/processors/processing/email.processor.ts
 import type { Job } from "bullmq";
 import { StorageService } from "../../../services/storage.service";
@@ -514,8 +501,6 @@ export class EmailProcessor {
 }
 
 
-Copy
-typescript
 workers/processing.worker.ts
 import { Worker, type ConnectionOptions } from "bullmq";
 import { QUEUE_NAMES, JOB_NAMES } from "../queues/jobs/types";
@@ -565,16 +550,14 @@ process.on("SIGTERM", async () => {
 console.log("Processing Worker Started...");
 
 
-Copy
-typescript
+```
 Step 5 — Graph Processor + Worker (LLM starts here)
 This is the first stage that calls an LLM. The extraction processor reads normalized text, calls the LLM with a structured output prompt, stores the result JSON, then dispatches to the graph update processor which writes to Neo4j.
 
 Install
+```bash
 bun add openai
 
-Copy
-bash
 queues/processors/extraction.processor.ts
 import type { Job } from "bullmq";
 import OpenAI from "openai";
@@ -634,8 +617,6 @@ Return a JSON object with this exact shape:
 }
 
 
-Copy
-typescript
 queues/processors/graph.processor.ts
 import type { Job } from "bullmq";
 import { StorageService } from "../../services/storage.service";
@@ -694,7 +675,6 @@ export class GraphProcessor {
 
 
 
-typescript
 workers/graph.worker.ts
 import { Worker, type ConnectionOptions } from "bullmq";
 import { QUEUE_NAMES, JOB_NAMES } from "../queues/jobs/types";
@@ -739,26 +719,22 @@ console.log("Graph Worker Started...");
 
 
 
-typescript
+```
 Step 6 — Reasoning Processor + Worker
 Install
+```bash
 bun add @qdrant/js-client-rest
 
-Copy
-bash
 Qdrant stores vector embeddings. Run it locally with Docker:
 
 docker run -d --name qdrant -p 6333:6333 qdrant/qdrant
 
-Copy
-bash
 Add to .env:
 
 QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION=blackbox
 
 
-env
 queues/processors/embedding.processor.ts
 import type { Job } from "bullmq";
 import OpenAI from "openai";
@@ -816,5 +792,4 @@ export class EmbeddingProcessor {
             triggerReason: "new-evidence",
             newEvidenceCount: 1,
         }, { priority: JOB_
-
-
+```
