@@ -9,35 +9,47 @@ import { graphQueue } from "../definitions/graph.queue";
 
 const ExtractionSchema = z.object({
     entities: z.array(z.object({
-        id: z.string().describe("The unique identifier for the entity"),
-        type: z.enum(["Person", "Organization", "Location", "Object", "Concept"]),
-        name: z.string(),
-        aliases: z.array(z.string())
-    })),
+        id: z.string().uuid().describe("A unique UUID for this entity — generate one"),
+        type: z.enum(["Person", "Organization", "Location", "Object", "Concept"])
+            .describe("The category of this entity"),
+        name: z.string().describe("The canonical name of the entity as it appears in the text"),
+        aliases: z.array(z.string()).describe("Alternative names or spellings found in the text"),
+    })).describe("All named entities explicitly mentioned in the evidence"),
     relationships: z.array(z.object({
-        fromId: z.string(),
-        toId: z.string(),
-        type: z.string().describe("The type of relationship between the entities, for eg. WORKS_FOR, LOCATED_AT, OWNS, etc."),
-        confidence: z.number().min(0).max(1).describe("A confidence score between 0 and 1 indicating the model's confidence in the relationship.")
-    })),
+        fromId: z.string().uuid().describe("The id of the source entity"),
+        toId: z.string().uuid().describe("The id of the target entity"),
+        type: z.string().describe("Relationship type in SCREAMING_SNAKE_CASE, e.g. WORKS_FOR, LOCATED_AT, OWNS"),
+        confidence: z.number().min(0).max(1).describe("Confidence score from 0.0 to 1.0"),
+    })).describe("Relationships between entities that are explicitly stated in the text"),
     events: z.array(z.object({
-        title: z.string(),
-        description: z.string(),
-        occuredAt: z.string().describe("ISO8601 date string or null if unknown"),
-        confidence: z.number().min(0).max(1).describe("A confidence score between 0 and 1 indicating the model's confidence in the event.")
-    }))
-})
+        title: z.string().describe("Short title for the event"),
+        description: z.string().describe("Full description of what happened"),
+        occurredAt: z.string().nullable().describe("ISO8601 datetime string, or null if the date is unknown"),
+        confidence: z.number().min(0).max(1).describe("Confidence score from 0.0 to 1.0"),
+    })).describe("Discrete events or actions that occurred, as stated in the evidence"),
+});
 
 // const model = new ChatFireworks({
 //     model: "accounts/fireworks/models/"
 // })
 const model = new ChatGroq({
-    model: "openai/gpt-oss-120b"
+    model: "openai/gpt-oss-120b",
+    temperature: 0.0,
+    maxRetries: 10,
+    timeout: 120_000
 })
 
 const prompt = ChatPromptTemplate.fromMessages([
-    ["system", "You are a forensic analyst. Extract all the entities, relationships, and events from the evidence text. Only extract what is explicitly stated in the text, do not infer."],
-    ["human", "{text}"]
+    [
+        "system",
+        `You are a forensic analyst extracting structured data from evidence documents.
+Rules:
+- Only extract what is EXPLICITLY stated. Do not infer or assume.
+- Generate a new UUID for each entity id.
+- If a date is mentioned but not precise, use your best ISO8601 approximation.
+- Confidence scores reflect how certain you are based on the text alone.`,
+    ],
+    ["human", "{text}"],
 ]);
 
 const extractionChain = prompt.pipe(model.withStructuredOutput(ExtractionSchema));
