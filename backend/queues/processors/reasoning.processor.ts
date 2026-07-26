@@ -60,7 +60,7 @@ export class ReasoningProcessor {
 
         await job.updateProgress(10);
 
-        const relevantChunks = await vectorStore.similaritySearch(`forensic evidence case ${caseId}`, 10, { should: { caseId } })
+        const relevantChunks = await vectorStore.similaritySearch(`forensic evidence case ${caseId}`, 10, { must: [{ key: "metadata.caseId", match: { value: caseId } }] })
 
         await job.updateProgress(30);
 

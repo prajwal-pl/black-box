@@ -39,6 +39,19 @@ enum TeamRole {
     VIEWER
 }
 
+enum ContradictionSeverity {
+    LOW
+    MEDIUM
+    HIGH
+    VERY_HIGH
+}
+
+enum ContradictionStatus {
+    OPEN
+    RESOLVED
+    DISMISSED
+}
+
 model User {
     id       String  @id @default(uuid())
     email    String  @unique
@@ -78,14 +91,16 @@ model TeamMember {
 }
 
 model Case {
-    id         String       @id @default(uuid())
-    name       String
-    status     CaseStatus   @default(ACTIVE)
-    user       User         @relation(fields: [userId], references: [id])
-    userId     String
-    severity   Severity     @default(LOW)
-    evidence   Evidence[]
-    hypotheses Hypothesis[]
+    id             String           @id @default(uuid())
+    name           String
+    status         CaseStatus       @default(ACTIVE)
+    user           User             @relation(fields: [userId], references: [id])
+    userId         String
+    severity       Severity         @default(LOW)
+    evidence       Evidence[]
+    hypotheses     Hypothesis[]
+    contradictions Contradictions[]
+    timelineEvents TimelineEvent[]
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -101,6 +116,34 @@ model Evidence {
     storageKey  String
     status      EvidenceStatus @default(PENDING)
     case        Case           @relation(fields: [caseId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Contradictions {
+    id          String              @id @default(uuid())
+    caseId      String
+    title       String
+    description String
+    severity    Severity            @default(LOW)
+    status      ContradictionStatus @default(OPEN)
+    evidenceIds String[]
+    case        Case                @relation(fields: [caseId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model TimelineEvent {
+    id          String    @id @default(uuid())
+    caseId      String
+    title       String
+    description String
+    evidenceId  String
+    occuredAt   DateTime?
+    confidence  Float
+    case        Case      @relation(fields: [caseId], references: [id])
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

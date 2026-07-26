@@ -30,6 +30,7 @@ export const JOB_NAMES = {
     GENERATE_EMBEDDINGS: "generate-embeddings",
     UPDATE_HYPOTHESES: "update-hypotheses",
     SCAN_CONTRADICTIONS: "scan-contradictions",
+    BUILD_TIMELINE: "build-timeline",
 
     // Maintenance Queue
     MERGE_ENTITIES: "merge-entities",
@@ -88,6 +89,10 @@ export interface UpdateGraphPayload extends BaseJobPayload {
 
 export interface GenerateEmbeddingsPayload extends BaseJobPayload {
     chunkKeys: string[]
+}
+
+export interface BuildTimelinePayload extends BaseJobPayload {
+    extractionResultKey: string
 }
 
 export interface UpdateHypothesesPayload {
