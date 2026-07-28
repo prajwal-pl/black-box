@@ -88,7 +88,7 @@ export default function LoginPage() {
                                 type="email"
                                 placeholder="IDENTIFIER@DOMAIN.SYS"
                                 {...register("email")}
-                                className="w-full bg-transparent border-b border-hairline-strong py-3 px-1 text-white font-serif-body placeholder:text-muted-soft focus:outline-none focus:border-white transition-colors"
+                                className="w-full bg-transparent border-b border-hairline-strong py-3 px-1 text-white font-sans-body placeholder:text-muted-soft focus:outline-none focus:border-white transition-colors"
                                 disabled={isLoading}
                             />
                             {errors.email && (

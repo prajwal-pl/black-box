@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Saira_Condensed, EB_Garamond, JetBrains_Mono } from "next/font/google";
+import { Saira_Condensed, Poppins, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/themes/theme-provider";
@@ -12,10 +12,10 @@ const displayFont = Saira_Condensed({
   weight: ["400"],
 });
 
-const serifFont = EB_Garamond({
+const sansBodyFont = Poppins({
   subsets: ["latin"],
-  variable: "--font-serif",
-  weight: ["400"],
+  variable: "--font-sans-body",
+  weight: ["300", "400", "500", "600", "700"],
 });
 
 const monoFont = JetBrains_Mono({
@@ -40,7 +40,7 @@ export default function RootLayout({
       className={cn(
         "h-full antialiased dark",
         displayFont.variable,
-        serifFont.variable,
+        sansBodyFont.variable,
         monoFont.variable
       )}
       suppressHydrationWarning

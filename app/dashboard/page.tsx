@@ -69,7 +69,7 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-black text-white font-serif-body">
+        <div className="flex flex-col min-h-screen bg-black text-white font-sans-body">
             <TopNav />
 
             {/* Main Content Area */}
@@ -203,7 +203,7 @@ export default function DashboardPage() {
                                         type="text"
                                         placeholder="E.G. OPERATION BUGATTI"
                                         {...register("name")}
-                                        className="w-full bg-transparent border-b border-hairline-strong py-3 px-1 text-white font-serif-body placeholder:text-muted-soft focus:outline-none focus:border-white transition-colors uppercase"
+                                        className="w-full bg-transparent border-b border-hairline-strong py-3 px-1 text-white font-sans-body placeholder:text-muted-soft focus:outline-none focus:border-white transition-colors uppercase"
                                         disabled={isSubmitting}
                                         autoFocus
                                     />

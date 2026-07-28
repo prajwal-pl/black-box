@@ -272,7 +272,7 @@ export default function CaseWorkspacePage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-black text-white font-serif-body">
+        <div className="flex flex-col min-h-screen bg-black text-white font-sans-body">
             <TopNav />
 
             {/* Workspace Area */}
@@ -401,7 +401,7 @@ export default function CaseWorkspacePage() {
                                 <p className="font-mono-precision text-[12px] tracking-[0.2em] text-white">
                                     DRAG & DROP OR SELECT FILES
                                 </p>
-                                <p className="font-serif-body text-xs text-muted">
+                                <p className="font-sans-body text-xs text-muted">
                                     Supported types: PDF, PNG, JPG, JPEG, DOCX, XLSX, CSV, TXT (Max 100MB)
                                 </p>
                             </div>
