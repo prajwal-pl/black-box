@@ -1,7 +1,8 @@
 import { deadLetterQueue } from "../queues/definitions/dead-letter.queue";
 import { ingestionQueue } from "../queues/definitions/ingestion.queue"
 import { maintenanceQueue } from "../queues/definitions/maintainence.queue";
-import { JOB_NAMES, JOB_PRIORITY, type DeadLetterPayload, type MergeEntitiesPayload, type UploadEvidencePayload } from "../queues/jobs/types";
+import { reasoningQueue } from "../queues/definitions/reasoning.queue";
+import { JOB_NAMES, JOB_PRIORITY, type DeadLetterPayload, type MergeEntitiesPayload, type ScanContradictionsPayload, type UpdateHypothesesPayload, type UploadEvidencePayload } from "../queues/jobs/types";
 
 export class EvidenceQueueService {
     static async enqueueEvidenceUpload(payload: UploadEvidencePayload) {
@@ -64,5 +65,18 @@ export class EvidenceQueueService {
             }
         }
         return stats
+    }
+
+    static async enqueueScanContradictions(payload: ScanContradictionsPayload) {
+        return await reasoningQueue.add(JOB_NAMES.SCAN_CONTRADICTIONS, payload, {
+            priority: JOB_PRIORITY.HYPOTHESES
+        })
+    }
+
+    static async manualHypothesisUpdate(caseId: string) {
+        return await reasoningQueue.add(JOB_NAMES.UPDATE_HYPOTHESES, {
+            caseId,
+            triggerReason: "manual"
+        } satisfies UpdateHypothesesPayload)
     }
 }
