@@ -1,7 +1,7 @@
 import type { Job } from "bullmq";
 import { JOB_NAMES, JOB_PRIORITY, type BuildTimelinePayload, type UpdateGraphPayload } from "../jobs/types";
 import { StorageService } from "../../services/storage.service";
-import { driver } from "../../lib/graph-driver"
+import { getDriver } from "../../lib/graph-driver"
 import { reasoningQueue } from "../definitions/reasoning.queue";
 import { graphQueue } from "../definitions/graph.queue";
 import db from "../../lib/db";
@@ -15,7 +15,7 @@ export class GraphProcessor {
         const extraction = JSON.parse(buffer.toString("utf-8"));
 
         await job.updateProgress(30);
-        const session = driver.session();
+        const session = getDriver().session();
 
         try {
             for (const entity of extraction.entities) {

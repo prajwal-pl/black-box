@@ -1,6 +1,13 @@
-import neo4j from "neo4j-driver";
+import neo4j, { type Driver } from "neo4j-driver";
 
-export const driver = neo4j.driver(
-    process.env.NEO4J_URI!,
-    neo4j.auth.basic(process.env.NEO4J_USERNAME!, process.env.NEO4J_PASSWORD!)
-);
+let _driver: Driver | null = null;
+
+export function getDriver(): Driver {
+    if (!_driver) {
+        _driver = neo4j.driver(
+            process.env.NEO4J_URI!,
+            neo4j.auth.basic(process.env.NEO4J_USERNAME!, process.env.NEO4J_PASSWORD!)
+        );
+    }
+    return _driver;
+}

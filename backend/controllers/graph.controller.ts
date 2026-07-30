@@ -1,9 +1,9 @@
 import type { RequestHandler } from "express";
-import { driver } from "../lib/graph-driver";
+import { getDriver } from "../lib/graph-driver";
 
 export const getGraph: RequestHandler = async (req, res) => {
     const { caseId } = req.params;
-    const session = driver.session();
+    const session = getDriver().session();
     try {
         const result = await session.run(
             `MATCH (e:Entity {caseId: $caseId})

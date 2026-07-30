@@ -17,26 +17,49 @@ const ContradictionSchema = z.object({
     })).describe("List of contradictions found. Empty array if none."),
 });
 
-const model = new ChatGroq({ model: "openai/gpt-oss-120b", temperature: 0, maxRetries: 10, timeout: 120_000 });
+// Lazy singletons — instantiated on first use so process.env is populated by then
+let _model: ChatGroq | null = null;
+let _vectorStore: QdrantVectorStore | null = null;
+let _contradictionChain: ReturnType<typeof buildContradictionChain> | null = null;
 
-const embeddings = new FireworksEmbeddings({
-    model: "accounts/fireworks/models/qwen3-embedding-8b",
-    batchSize: 512,
-});
+function getModel() {
+    if (!_model) {
+        _model = new ChatGroq({ model: "openai/gpt-oss-120b", temperature: 0, maxRetries: 10, timeout: 120_000 });
+    }
+    return _model;
+}
 
-const vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
-    url: process.env.QDRANT_URL!,
-    collectionName: process.env.QDRANT_COLLECTION!,
-});
+async function getVectorStore() {
+    if (!_vectorStore) {
+        const embeddings = new FireworksEmbeddings({
+            model: "accounts/fireworks/models/qwen3-embedding-8b",
+            batchSize: 512,
+        });
+        _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+            url: process.env.QDRANT_URL!,
+            collectionName: process.env.QDRANT_COLLECTION!,
+        });
+    }
+    return _vectorStore;
+}
 
-const contradictionChain = ChatPromptTemplate.fromMessages([
-    ["system", `You are a forensic analyst identifying contradictions between pieces of evidence.
+function buildContradictionChain() {
+    return ChatPromptTemplate.fromMessages([
+        ["system", `You are a forensic analyst identifying contradictions between pieces of evidence.
 Rules:
 - Only flag genuine factual contradictions, not differences in perspective.
 - A contradiction means two pieces of evidence cannot both be true.
 - If there are no contradictions, return an empty array.`],
-    ["human", `New evidence:\n{newEvidence}\n\nExisting evidence chunks:\n{existingEvidence}\n\nIdentify any contradictions.`],
-]).pipe(model.withStructuredOutput(ContradictionSchema));
+        ["human", `New evidence:\n{newEvidence}\n\nExisting evidence chunks:\n{existingEvidence}\n\nIdentify any contradictions.`],
+    ]).pipe(getModel().withStructuredOutput(ContradictionSchema));
+}
+
+function getContradictionChain() {
+    if (!_contradictionChain) {
+        _contradictionChain = buildContradictionChain();
+    }
+    return _contradictionChain;
+}
 
 export class ContradictionProcessor {
     static async handle(job: Job<ScanContradictionsPayload>) {
@@ -57,6 +80,7 @@ export class ContradictionProcessor {
 
         await job.updateProgress(30);
 
+        const vectorStore = await getVectorStore();
         const similarChunks = await vectorStore.similaritySearch(
             newEvidenceText,
             10,
@@ -78,7 +102,7 @@ export class ContradictionProcessor {
 
         const existingEvidenceText = similarChunks.map(chunk => chunk.pageContent).join("\n---\n");
 
-        const result = await contradictionChain.invoke({
+        const result = await getContradictionChain().invoke({
             newEvidence: newEvidenceText,
             existingEvidence: existingEvidenceText,
         });

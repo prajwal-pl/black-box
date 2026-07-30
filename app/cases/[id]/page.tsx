@@ -17,10 +17,14 @@ import {
     RefreshCw, 
     X,
     Loader2,
-    Lock
+    Lock,
+    Terminal,
+    Cpu,
+    Activity
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { DecryptText } from "@/components/landing/decrypt-text";
 
 interface UploadingFile {
     tempId: string;
@@ -66,7 +70,7 @@ export default function CaseWorkspacePage() {
         refetchInterval: (query) => {
             const list = query.state.data as Evidence[] | undefined;
             if (list && list.some(e => e.status === "PENDING" || e.status === "PROCESSING")) {
-                return 3000; // Poll every 3 seconds if active jobs exist
+                return 3000;
             }
             return false;
         }
@@ -99,161 +103,110 @@ export default function CaseWorkspacePage() {
         e.preventDefault();
         e.stopPropagation();
         setDragActive(false);
-
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFiles(Array.from(e.dataTransfer.files));
+            handleFiles(e.dataTransfer.files);
         }
     };
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            handleFiles(Array.from(e.target.files));
+            handleFiles(e.target.files);
         }
     };
 
-    // Filter and add files to the local queue
-    const handleFiles = (files: File[]) => {
-        const allowedExtensions = ["pdf", "png", "jpg", "jpeg", "docx", "xlsx", "csv", "txt"];
-        
-        const newUploadingFiles: UploadingFile[] = [];
+    const handleFiles = (files: FileList) => {
+        const token = localStorage.getItem("bb_token");
+        if (!token) return;
 
-        files.forEach(file => {
-            const ext = file.name.split(".").pop()?.toLowerCase();
-            if (!ext || !allowedExtensions.includes(ext)) {
-                toast.error(`UNSUPPORTED FILE: ${file.name}`);
-                return;
-            }
-
-            const tempId = Math.random().toString(36).substring(2, 9);
-            newUploadingFiles.push({
+        const newFiles: UploadingFile[] = Array.from(files).map(file => {
+            const tempId = Math.random().toString(36).substring(7);
+            return {
                 tempId,
                 file,
                 name: file.name,
                 size: file.size,
                 progress: 0,
                 status: "queued"
-            });
+            };
         });
 
-        if (newUploadingFiles.length > 0) {
-            setUploadQueue(prev => [...prev, ...newUploadingFiles]);
-        }
+        setUploadQueue(prev => [...prev, ...newFiles]);
+        
+        // Trigger uploads for queued items
+        newFiles.forEach(fileObj => {
+            handleUpload(fileObj, token);
+        });
     };
 
-    // Trigger sequential or parallel uploads
-    useEffect(() => {
-        const queuedFile = uploadQueue.find(f => f.status === "queued");
-        if (queuedFile) {
-            uploadFile(queuedFile);
-        }
-    }, [uploadQueue]);
+    const handleUpload = (fileObj: UploadingFile, token: string) => {
+        const xhr = new XMLHttpRequest();
+        const formData = new FormData();
+        formData.append("file", fileObj.file);
 
-    // Perform actual upload with progress callback
-    const uploadFile = (uploadingFile: UploadingFile) => {
-        // Mark as uploading
-        setUploadQueue(prev => 
-            prev.map(f => f.tempId === uploadingFile.tempId ? { ...f, status: "uploading" } : f)
-        );
+        xhr.open("POST", `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/evidence/upload/${caseId}`, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
-        let xhrRef: XMLHttpRequest;
-
-        // Custom promise to capture XHR reference for abort
-        const performUpload = () => {
-            return new Promise<any>((resolve, reject) => {
-                const token = localStorage.getItem("bb_token");
-                const xhr = new XMLHttpRequest();
-                xhrRef = xhr;
-
-                // Update queue state with XHR ref
+        // Update progress handler
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
                 setUploadQueue(prev => 
-                    prev.map(f => f.tempId === uploadingFile.tempId ? { ...f, xhr } : f)
+                    prev.map(f => f.tempId === fileObj.tempId ? { ...f, progress: percentComplete } : f)
                 );
-
-                const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-                xhr.open("POST", `${BASE_URL}/cases/${caseId}/evidence`, true);
-                
-                if (token) {
-                    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-                }
-
-                xhr.upload.onprogress = (event) => {
-                    if (event.lengthComputable) {
-                        const percentComplete = Math.round((event.loaded / event.total) * 100);
-                        setUploadQueue(prev => 
-                            prev.map(f => f.tempId === uploadingFile.tempId ? { ...f, progress: percentComplete } : f)
-                        );
-                    }
-                };
-
-                xhr.onload = () => {
-                    let data: any = null;
-                    const contentType = xhr.getResponseHeader("content-type");
-                    if (contentType && contentType.includes("application/json")) {
-                        try {
-                            data = JSON.parse(xhr.responseText);
-                        } catch {
-                            data = xhr.responseText;
-                        }
-                    } else {
-                        data = xhr.responseText;
-                    }
-
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve(data);
-                    } else {
-                        reject(new Error(data?.message || data?.error || `Upload failed (${xhr.status})`));
-                    }
-                };
-
-                xhr.onerror = () => reject(new Error("Network connection lost."));
-                xhr.onabort = () => reject(new Error("Upload cancelled by operator."));
-
-                const formData = new FormData();
-                formData.append("file", uploadingFile.file);
-                xhr.send(formData);
-            });
+            }
         };
 
-        performUpload()
-            .then((res) => {
-                setUploadQueue(prev => 
-                    prev.map(f => f.tempId === uploadingFile.tempId ? { ...f, status: "processing", progress: 100 } : f)
-                );
-                toast.success(`UPLOAD COMPLETE: ${uploadingFile.name}`);
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                setUploadQueue(prev => prev.filter(f => f.tempId !== fileObj.tempId));
                 queryClient.invalidateQueries({ queryKey: ["evidence", caseId] });
-            })
-            .catch((err) => {
-                // If aborted, don't show error toast unless it's an actual failure
-                if (xhrRef.status === 0 && xhrRef.readyState === 4) {
-                    // Aborted
-                    return;
-                }
+                toast.success(`INGESTED: ${fileObj.name}`);
+            } else {
+                let errMsg = "Upload failed";
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    errMsg = res.message || errMsg;
+                } catch (_) {}
                 setUploadQueue(prev => 
-                    prev.map(f => f.tempId === uploadingFile.tempId ? { ...f, status: "failed", error: err.message } : f)
+                    prev.map(f => f.tempId === fileObj.tempId ? { ...f, status: "failed", error: errMsg } : f)
                 );
-                toast.error(`UPLOAD FAILED: ${uploadingFile.name}`);
-            });
+                toast.error(`Ingestion error on ${fileObj.name}`);
+            }
+        };
+
+        xhr.onerror = () => {
+            setUploadQueue(prev => 
+                prev.map(f => f.tempId === fileObj.tempId ? { ...f, status: "failed", error: "Network error occurred" } : f)
+            );
+        };
+
+        setUploadQueue(prev => 
+            prev.map(f => f.tempId === fileObj.tempId ? { ...f, status: "uploading", xhr } : f)
+        );
+
+        xhr.send(formData);
     };
 
     const handleCancelUpload = (tempId: string) => {
-        const file = uploadQueue.find(f => f.tempId === tempId);
-        if (file) {
-            if (file.xhr) {
-                file.xhr.abort();
-            }
-            setUploadQueue(prev => prev.filter(f => f.tempId !== tempId));
-            toast.info("UPLOAD CANCELLED");
+        const fileObj = uploadQueue.find(f => f.tempId === tempId);
+        if (fileObj && fileObj.xhr) {
+            fileObj.xhr.abort();
         }
+        setUploadQueue(prev => prev.filter(f => f.tempId !== tempId));
     };
 
     const handleRetryUpload = (tempId: string) => {
+        const token = localStorage.getItem("bb_token");
+        const fileObj = uploadQueue.find(f => f.tempId === tempId);
+        if (!fileObj || !token) return;
+
         setUploadQueue(prev => 
             prev.map(f => f.tempId === tempId ? { ...f, status: "queued", progress: 0, error: undefined } : f)
         );
+        handleUpload(fileObj, token);
     };
 
     const handleClearQueue = () => {
-        // Abort any running uploads first
         uploadQueue.forEach(f => {
             if (f.status === "uploading" && f.xhr) {
                 f.xhr.abort();
@@ -272,72 +225,79 @@ export default function CaseWorkspacePage() {
     };
 
     return (
-        <div className="flex flex-col min-h-screen bg-black text-white font-sans-body">
+        <div className="flex flex-col min-h-screen bg-black text-white font-sans relative select-none">
             <TopNav />
 
             {/* Workspace Area */}
-            <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto px-6 py-[40px] lg:py-[64px] gap-8">
+            <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto px-6 py-12 gap-8 z-10 relative">
+                
                 {/* Left Panel: Case Specs */}
                 <aside className="w-full lg:w-[320px] shrink-0 space-y-8 select-none">
+                    
                     <button
                         onClick={() => router.push("/dashboard")}
-                        className="flex items-center space-x-2 font-mono-precision text-[10px] tracking-[0.2em] text-muted hover:text-white transition-colors bg-transparent border border-hairline py-2 px-4 hover:border-white w-full justify-center"
+                        className="flex items-center space-x-2 font-mono text-xs tracking-wider text-zinc-400 hover:text-white transition-colors bg-transparent border border-hairline py-3.5 px-4 hover:border-white w-full justify-center rounded-none uppercase"
                     >
-                        <ArrowLeft size={12} />
+                        <ArrowLeft size={14} />
                         <span>RETURN TO ARCHIVE</span>
                     </button>
 
                     {caseLoading ? (
-                        <div className="border border-hairline bg-surface-soft p-6 space-y-4 animate-pulse">
+                        <div className="border border-hairline bg-zinc-950/20 p-6 space-y-4 animate-pulse relative">
                             <div className="h-6 bg-hairline-strong w-2/3" />
                             <div className="h-4 bg-hairline-strong w-1/3" />
                             <div className="h-[1px] bg-hairline" />
                             <div className="h-4 bg-hairline-strong w-1/2" />
                         </div>
                     ) : caseError ? (
-                        <div className="border border-warning/20 bg-surface-soft p-6 text-center">
+                        <div className="border border-warning/20 bg-zinc-950/40 p-6 text-center relative">
                             <AlertTriangle className="text-warning mx-auto mb-2" size={24} />
-                            <p className="font-mono-precision text-[10px] tracking-[0.15em] text-warning uppercase">
+                            <p className="font-mono text-xs tracking-wider text-warning uppercase">
                                 CASE RETRIEVAL ERROR
                             </p>
                         </div>
                     ) : caseData ? (
-                        <div className="border border-hairline bg-surface-soft p-6 space-y-6">
-                            <div className="space-y-2">
-                                <span className="font-mono-precision text-[9px] tracking-[0.25em] text-muted block">
+                        <div className="border border-hairline bg-zinc-950/20 p-6 space-y-6 relative">
+                            <div className="absolute top-1.5 left-1.5 w-1.5 h-1.5 border-t border-l border-white/30" />
+                            <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 border-t border-r border-white/30" />
+                            <div className="absolute bottom-1.5 left-1.5 w-1.5 h-1.5 border-b border-l border-white/30" />
+                            <div className="absolute bottom-1.5 right-1.5 w-1.5 h-1.5 border-b border-r border-white/30" />
+                            
+                            <div className="space-y-2 text-left">
+                                <span className="font-mono text-xs tracking-wider text-zinc-400 block">
                                     CASE FILE PROFILE
                                 </span>
-                                <h2 className="font-display text-xl tracking-[0.1em] text-white uppercase break-words">
+                                <h2 className="font-mono text-base font-bold tracking-wide text-white uppercase break-words">
                                     {caseData.name}
                                 </h2>
                             </div>
 
-                            <div className="border-t border-hairline pt-6 space-y-4 font-mono-precision text-[10px] tracking-[0.15em] text-muted">
-                                <div className="flex justify-between">
+                            <div className="border-t border-hairline pt-6 space-y-4 font-mono text-xs tracking-wide text-zinc-400 text-left">
+                                <div className="flex justify-between py-1.5 border-b border-hairline-strong">
                                     <span>SEVERITY:</span>
-                                    <span className={caseData.severity === "CRITICAL" ? "text-warning" : "text-white"}>
+                                    <span className={caseData.severity === "CRITICAL" ? "text-warning font-bold" : "text-white font-bold"}>
                                         {caseData.severity}
                                     </span>
                                 </div>
-                                <div className="flex justify-between">
+                                <div className="flex justify-between py-1.5 border-b border-hairline-strong">
                                     <span>STATUS:</span>
-                                    <span className="text-white">{caseData.status}</span>
+                                    <span className="text-white font-bold">{caseData.status}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span>RECORD_ID:</span>
-                                    <span className="text-white">{caseData.id.slice(0, 8).toUpperCase()}</span>
+                                <div className="flex justify-between py-1.5 border-b border-hairline-strong">
+                                    <span>RECORD_HASH:</span>
+                                    <span className="text-white font-bold">{caseData.id.slice(0, 8).toUpperCase()}</span>
                                 </div>
-                                <div className="flex justify-between">
+                                <div className="flex justify-between py-1.5">
                                     <span>CREATED:</span>
-                                    <span className="text-white">{new Date(caseData.createdAt).toLocaleDateString()}</span>
+                                    <span className="text-white font-bold">{new Date(caseData.createdAt).toLocaleDateString()}</span>
                                 </div>
                             </div>
 
                             <div className="border-t border-hairline pt-6">
-                                <div className="flex items-center space-x-2 text-muted-soft">
-                                    <Lock size={12} />
-                                    <span className="font-mono-precision text-[9px] tracking-[0.15em]">
-                                        ISOLATION PARTITION ON
+                                <div className="flex items-center space-x-2 text-zinc-400">
+                                    <Lock size={12} className="text-success animate-pulse" />
+                                    <span className="font-mono text-xs tracking-wider">
+                                        ISOLATION PARTITION SECURE
                                     </span>
                                 </div>
                             </div>
@@ -345,47 +305,57 @@ export default function CaseWorkspacePage() {
                     ) : null}
 
                     {/* Pending Feature Info */}
-                    <div className="border border-hairline border-dashed p-6 space-y-4">
-                        <h4 className="font-mono-precision text-[10px] tracking-[0.2em] text-muted uppercase">
-                            SYSTEM CAPABILITIES
+                    <div className="border border-hairline bg-zinc-950/20 p-6 space-y-4 relative text-left">
+                        <div className="absolute top-1.5 left-1.5 w-1.5 h-1.5 border-t border-l border-white/30" />
+                        <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 border-t border-r border-white/30" />
+                        
+                        <h4 className="font-mono text-xs tracking-wider text-zinc-400 uppercase flex items-center space-x-1.5">
+                            <Cpu size={12} />
+                            <span>COGNITIVE ENCLAVES</span>
                         </h4>
-                        <div className="space-y-2 text-xs text-muted-soft">
-                            <p className="border-l border-hairline pl-3 py-1">
-                                ✓ Text Extraction (Ingested)
+                        <div className="space-y-2 font-mono text-xs text-zinc-400 tracking-wide">
+                            <p className="border-l border-hairline pl-3 py-0.5">
+                                ✓ Text Extraction [INGESTED]
                             </p>
-                            <p className="border-l border-hairline pl-3 py-1">
-                                ✓ Queue Management (Active)
+                            <p className="border-l border-hairline pl-3 py-0.5">
+                                ✓ Queue Manager [ACTIVE]
                             </p>
-                            <p className="border-l border-warning pl-3 py-1 text-muted">
-                                ⧗ Investigation Graph (Pending Backend API)
+                            <p className="border-l border-warning/50 pl-3 py-0.5 text-zinc-400">
+                                ⧗ Relational Graph [PENDING]
                             </p>
-                            <p className="border-l border-warning pl-3 py-1 text-muted">
-                                ⧗ Hypothesis Lab (Pending Backend API)
+                            <p className="border-l border-warning/50 pl-3 py-0.5 text-zinc-400">
+                                ⧗ Inference Lab [PENDING]
                             </p>
                         </div>
                     </div>
                 </aside>
 
                 {/* Right Panel: Upload & Files */}
-                <main className="flex-grow flex flex-col space-y-12">
+                <main className="flex-grow flex flex-col space-y-12 text-left">
                     {/* Drag & Drop Upload Zone */}
                     <section className="space-y-4">
-                        <h3 className="font-mono-precision text-[11px] tracking-[0.25em] text-muted uppercase">
-                            FILE INGESTION PIPELINE
+                        <h3 className="font-mono text-xs tracking-wider text-zinc-400 uppercase flex items-center space-x-1.5 select-none">
+                            <Activity size={12} />
+                            <span>FILE INGESTION SCANNER</span>
                         </h3>
                         
                         <div
-                            onDragEnter={handleDrag}
-                            onDragOver={handleDrag}
-                            onDragLeave={handleDrag}
-                            onDrop={handleDrop}
-                            onClick={() => fileInputRef.current?.click()}
-                            className={`border border-dashed transition-colors duration-150 py-12 px-6 flex flex-col items-center justify-center space-y-4 cursor-pointer text-center ${
-                                dragActive 
-                                    ? "border-link bg-surface-soft/80" 
-                                    : "border-hairline bg-transparent hover:bg-surface-soft/40"
-                            }`}
+                          onDragEnter={handleDrag}
+                          onDragOver={handleDrag}
+                          onDragLeave={handleDrag}
+                          onDrop={handleDrop}
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`border border-dashed transition-all duration-300 py-12 px-6 flex flex-col items-center justify-center space-y-4 cursor-pointer text-center relative overflow-hidden ${
+                              dragActive 
+                                  ? "border-white bg-zinc-950/45" 
+                                  : "border-hairline bg-zinc-950/10 hover:bg-zinc-950/20 hover:border-white/30"
+                          }`}
                         >
+                            {/* Scanning laser sweep when drag is active */}
+                            {dragActive && (
+                                <div className="absolute left-0 right-0 h-[2px] bg-white z-10 pointer-events-none animate-scan" />
+                            )}
+
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -395,14 +365,14 @@ export default function CaseWorkspacePage() {
                                 accept=".pdf,.png,.jpg,.jpeg,.docx,.xlsx,.csv,.txt"
                             />
                             
-                            <Upload size={32} className={dragActive ? "text-link animate-bounce" : "text-muted"} />
+                            <Upload size={32} className={dragActive ? "text-white animate-bounce" : "text-zinc-500"} />
                             
-                            <div className="space-y-2">
-                                <p className="font-mono-precision text-[12px] tracking-[0.2em] text-white">
-                                    DRAG & DROP OR SELECT FILES
+                            <div className="space-y-2 select-none">
+                                <p className="font-mono text-sm tracking-wider text-white uppercase font-bold">
+                                    DRAG & DROP OR SELECT EVIDENCE PORTFOLIO
                                 </p>
-                                <p className="font-sans-body text-xs text-muted">
-                                    Supported types: PDF, PNG, JPG, JPEG, DOCX, XLSX, CSV, TXT (Max 100MB)
+                                <p className="font-mono text-xs text-zinc-400 uppercase tracking-wide leading-relaxed max-w-sm mx-auto">
+                                    Supported payload: PDF, PNG, JPG, JPEG, DOCX, XLSX, CSV, TXT (Max 100MB)
                                 </p>
                             </div>
                         </div>
@@ -410,16 +380,20 @@ export default function CaseWorkspacePage() {
 
                     {/* Active Upload Queue */}
                     {uploadQueue.length > 0 && (
-                        <section className="border border-hairline bg-surface-soft p-6 space-y-6">
-                            <div className="flex justify-between items-center border-b border-hairline pb-4">
-                                <h3 className="font-display text-sm tracking-[0.2em] text-white uppercase">
-                                    ACTIVE INGESTION QUEUE ({uploadQueue.length})
+                        <section className="border border-hairline bg-zinc-950/20 p-6 space-y-6 relative">
+                            <div className="absolute top-1.5 left-1.5 w-1.5 h-1.5 border-t border-l border-white/30" />
+                            <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 border-t border-r border-white/30" />
+
+                            <div className="flex justify-between items-center border-b border-hairline pb-4 font-mono text-xs tracking-wider select-none">
+                                <h3 className="text-white font-bold flex items-center space-x-2">
+                                    <Activity size={12} className="text-success animate-pulse" />
+                                    <span>ACTIVE INGESTION QUEUE ({uploadQueue.length})</span>
                                 </h3>
                                 <button
                                     onClick={handleClearQueue}
-                                    className="font-mono-precision text-[10px] tracking-[0.15em] text-muted hover:text-white transition-colors bg-transparent border-none"
+                                    className="text-zinc-400 hover:text-white transition-colors bg-transparent border-none uppercase font-semibold"
                                 >
-                                    CLEAR ALL
+                                    [CLEAR ALL]
                                 </button>
                             </div>
 
@@ -431,24 +405,24 @@ export default function CaseWorkspacePage() {
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, height: 0 }}
-                                            className="border border-hairline bg-black p-4 space-y-3"
+                                            className="border border-hairline bg-black/40 p-4 space-y-3 relative text-left"
                                         >
                                             <div className="flex justify-between items-start">
-                                                <div className="space-y-1 pr-4 min-w-0">
-                                                    <h4 className="font-mono-precision text-[11px] tracking-wide text-white truncate">
+                                                <div className="space-y-1 pr-4 min-w-0 font-mono">
+                                                    <h4 className="text-xs font-bold text-white truncate pr-4">
                                                         {item.name}
                                                     </h4>
-                                                    <p className="text-[10px] text-muted-soft font-mono">
-                                                        {formatBytes(item.size)}
+                                                    <p className="text-xs text-zinc-400">
+                                                        SIZE: {formatBytes(item.size)}
                                                     </p>
                                                 </div>
 
-                                                <div className="flex items-center space-x-3 shrink-0">
-                                                    <span className={`font-mono-precision text-[9px] tracking-widest px-2 py-0.5 border ${
+                                                <div className="flex items-center space-x-3 shrink-0 select-none">
+                                                    <span className={`font-mono text-xs tracking-wider px-2.5 py-1 border ${
                                                         item.status === "failed" ? "border-warning text-warning" : 
-                                                        item.status === "processing" ? "border-link text-link animate-pulse" :
+                                                        item.status === "processing" ? "border-success text-success animate-pulse" :
                                                         item.status === "uploading" ? "border-white text-white" :
-                                                        "border-hairline-strong text-muted"
+                                                        "border-hairline-strong text-zinc-400"
                                                     }`}>
                                                         {item.status.toUpperCase()}
                                                     </span>
@@ -456,20 +430,20 @@ export default function CaseWorkspacePage() {
                                                     {item.status === "failed" && (
                                                         <button 
                                                             onClick={() => handleRetryUpload(item.tempId)}
-                                                            className="text-muted hover:text-white transition-colors"
+                                                            className="text-zinc-400 hover:text-white transition-colors"
                                                             title="Retry upload"
                                                         >
-                                                            <RefreshCw size={12} />
+                                                            <RefreshCw size={14} />
                                                         </button>
                                                     )}
 
                                                     {(item.status === "uploading" || item.status === "queued") && (
                                                         <button 
                                                             onClick={() => handleCancelUpload(item.tempId)}
-                                                            className="text-muted hover:text-white transition-colors"
+                                                            className="text-zinc-400 hover:text-white transition-colors"
                                                             title="Cancel upload"
                                                         >
-                                                            <X size={12} />
+                                                            <X size={14} />
                                                         </button>
                                                     )}
                                                 </div>
@@ -484,14 +458,14 @@ export default function CaseWorkspacePage() {
                                                             style={{ width: `${item.progress}%` }}
                                                         />
                                                     </div>
-                                                    <div className="flex justify-between font-mono text-[8px] text-muted-soft">
+                                                    <div className="flex justify-between font-mono text-xs text-zinc-400">
                                                         <span>{item.progress}% UPLOADED</span>
                                                     </div>
                                                 </div>
                                             )}
 
                                             {item.error && (
-                                                <p className="font-mono-precision text-[9px] text-warning">
+                                                <p className="font-mono text-xs text-warning uppercase">
                                                     ERROR: {item.error}
                                                 </p>
                                             )}
@@ -504,64 +478,65 @@ export default function CaseWorkspacePage() {
 
                     {/* Evidence Files Archive (POST-processing) */}
                     <section className="space-y-4">
-                        <h3 className="font-mono-precision text-[11px] tracking-[0.25em] text-muted uppercase">
-                            SECURE EVIDENCE ARCHIVE
+                        <h3 className="font-mono text-xs tracking-wider text-zinc-400 uppercase flex items-center space-x-1.5 select-none">
+                            <Terminal size={12} />
+                            <span>SECURE EVIDENCE ARCHIVE</span>
                         </h3>
 
                         {evidenceLoading ? (
                             <div className="space-y-4">
                                 {[1, 2].map((i) => (
-                                    <div key={i} className="h-16 border border-hairline animate-pulse bg-surface-soft" />
+                                    <div key={i} className="h-16 border border-hairline animate-pulse bg-zinc-950/20" />
                                 ))}
                             </div>
                         ) : evidenceError ? (
-                            <div className="border border-warning/20 bg-surface-soft p-6 text-center text-warning font-mono-precision text-xs">
+                            <div className="border border-warning/20 bg-zinc-950/40 p-6 text-center text-warning font-mono text-xs uppercase select-none">
                                 FAILED TO RETRIEVE EVIDENCE LOGS
                             </div>
                         ) : evidenceList && evidenceList.length > 0 ? (
-                            <div className="border border-hairline bg-surface-soft divide-y divide-hairline">
+                            <div className="border border-hairline bg-zinc-950/20 divide-y divide-hairline">
                                 {evidenceList.map((e) => (
                                     <div 
                                         key={e.id}
-                                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-black/40 transition-colors gap-4"
+                                        className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-zinc-950/60 transition-colors gap-4"
                                     >
-                                        <div className="flex items-start space-x-3 min-w-0">
-                                            <FileText size={16} className="text-muted shrink-0 mt-0.5" />
-                                            <div className="min-w-0 space-y-1">
-                                                <h4 className="font-mono-precision text-[11px] tracking-wide text-white truncate pr-4" title={e.fileName}>
+                                        <div className="flex items-start space-x-3.5 min-w-0 text-left">
+                                            <FileText size={16} className="text-zinc-400 shrink-0 mt-0.5" />
+                                            <div className="min-w-0 space-y-1.5 font-mono">
+                                                <h4 className="text-sm font-bold text-white truncate pr-4" title={e.fileName}>
                                                     {e.fileName}
                                                 </h4>
-                                                <div className="flex space-x-4 font-mono text-[9px] text-muted-soft">
-                                                    <span>TYPE: {e.mimeType.toUpperCase()}</span>
-                                                    <span>ADDED: {new Date(e.createdAt).toLocaleDateString()}</span>
+                                                <div className="flex space-x-4 text-xs text-zinc-400">
+                                                    <span>MIME: {e.mimeType.toUpperCase()}</span>
+                                                    <span>DATE: {new Date(e.createdAt).toLocaleDateString()}</span>
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center justify-between sm:justify-end space-x-6 shrink-0">
+                                        <div className="flex items-center justify-between sm:justify-end space-x-6 shrink-0 select-none">
                                             {/* Status logic */}
                                             <div className="flex items-center space-x-2">
                                                 {e.status === "COMPLETED" && (
-                                                    <span className="flex items-center space-x-1 font-mono-precision text-[9px] text-success tracking-widest">
-                                                        <CheckCircle size={10} />
+                                                    <span className="flex items-center space-x-1.5 font-mono text-xs text-success tracking-wider font-bold">
+                                                        <CheckCircle size={12} />
                                                         <span>COMPLETED</span>
                                                     </span>
                                                 )}
                                                 {e.status === "PROCESSING" && (
-                                                    <span className="flex items-center space-x-1 font-mono-precision text-[9px] text-link tracking-widest animate-pulse">
-                                                        <Loader2 size={10} className="animate-spin" />
+                                                    <span className="flex items-center space-x-1.5 font-mono text-xs text-success tracking-wider font-bold animate-pulse">
+                                                        <Loader2 size={12} className="animate-spin" />
                                                         <span>PROCESSING</span>
                                                     </span>
                                                 )}
                                                 {e.status === "PENDING" && (
-                                                    <span className="flex items-center space-x-1 font-mono-precision text-[9px] text-muted tracking-widest">
-                                                        <Clock size={10} />
+                                                    <span className="flex items-center space-x-1.5 font-mono text-xs text-zinc-400 tracking-wider font-bold">
+                                                        <Clock size={12} />
                                                         <span>IN QUEUE</span>
                                                     </span>
                                                 )}
                                                 {e.status === "FAILED" && (
-                                                    <span className="flex items-center space-x-1 font-mono-precision text-[9px] text-warning tracking-widest">
-                                                        <AlertTriangle size={10} />
+                                                    <span className="flex items-center space-x-1.5 font-mono text-xs text-warning tracking-wider font-bold">
+                                                        <AlertTriangle size={12} />
                                                         <span>FAILED</span>
                                                     </span>
                                                 )}
@@ -570,13 +545,13 @@ export default function CaseWorkspacePage() {
                                             <button
                                                 onClick={() => deleteMutation.mutate(e.id)}
                                                 disabled={deleteMutation.isPending && deleteMutation.variables === e.id}
-                                                className="text-muted-soft hover:text-white transition-colors p-1 border border-transparent hover:border-hairline hover:bg-black"
+                                                className="text-zinc-400 hover:text-white transition-colors p-1.5 border border-transparent hover:border-hairline hover:bg-zinc-950"
                                                 title="Delete archive log"
                                             >
                                                 {deleteMutation.isPending && deleteMutation.variables === e.id ? (
-                                                    <Loader2 size={12} className="animate-spin" />
+                                                    <Loader2 size={14} className="animate-spin" />
                                                 ) : (
-                                                    <Trash2 size={12} />
+                                                    <Trash2 size={14} />
                                                 )}
                                             </button>
                                         </div>
@@ -584,12 +559,12 @@ export default function CaseWorkspacePage() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="border border-dashed border-hairline py-12 flex flex-col items-center justify-center space-y-2 text-center select-none">
-                                <p className="font-mono-precision text-[10px] tracking-[0.2em] text-muted uppercase">
-                                    NO EVIDENCE INGESTED FOR THIS CASE
+                            <div className="border border-dashed border-hairline py-12 flex flex-col items-center justify-center space-y-2.5 text-center select-none">
+                                <p className="font-mono text-xs tracking-wider text-zinc-400 uppercase">
+                                    NO EVIDENCE INGESTED FOR THIS SEGMENT
                                 </p>
-                                <p className="text-xs text-muted-soft max-w-sm">
-                                    Drop files above to execute ingestion queue pipelines. Ingestion parses documents and indexes content securely.
+                                <p className="text-xs text-zinc-400 max-w-sm leading-relaxed">
+                                    Ingest document payload feeds to trigger parser engines and contextualize node vectors securely.
                                 </p>
                             </div>
                         )}

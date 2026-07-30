@@ -3,12 +3,11 @@ import { type RequestHandler } from "express";
 import db from "../lib/db";
 
 export const getCases: RequestHandler = async (req, res) => {
+    const userId = req.userId;
     try {
-        const cases = await db.case.findMany();
-
-        if (!cases) {
-            return res.status(404).json({ message: "No cases found" });
-        }
+        const cases = await db.case.findMany({
+            where: { userId: userId as string },
+        });
 
         res.json({ message: "Cases fetched successfully: ", cases });
     } catch (error) {
@@ -42,6 +41,7 @@ export const createCase: RequestHandler = async (req, res) => {
 
 export const getCaseById: RequestHandler = async (req, res) => {
     const { id } = req.params;
+    const userId = req.userId;
     try {
         if (!id) {
             return res.status(400).json({ message: "Case ID is required" });
@@ -49,7 +49,8 @@ export const getCaseById: RequestHandler = async (req, res) => {
 
         const caseItem = await db.case.findUnique({
             where: {
-                id: id as string
+                id: id as string,
+                userId: userId as string,
             },
         });
 

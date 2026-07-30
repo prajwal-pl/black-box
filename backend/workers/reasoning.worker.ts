@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import { Worker, type ConnectionOptions } from "bullmq";
 import { JOB_NAMES, QUEUE_NAMES } from "../queues/jobs/types";
 import { ReasoningProcessor } from "../queues/processors/reasoning.processor";

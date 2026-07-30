@@ -29,30 +29,44 @@ const ExtractionSchema = z.object({
     })).describe("Discrete events or actions that occurred, as stated in the evidence"),
 });
 
-// const model = new ChatFireworks({
-//     model: "accounts/fireworks/models/"
-// })
-const model = new ChatGroq({
-    model: "openai/gpt-oss-120b",
-    temperature: 0.0,
-    maxRetries: 10,
-    timeout: 120_000
-})
+// Lazy singletons — instantiated on first use so process.env is populated by then
+let _model: ChatGroq | null = null;
+let _extractionChain: ReturnType<typeof buildExtractionChain> | null = null;
 
-const prompt = ChatPromptTemplate.fromMessages([
-    [
-        "system",
-        `You are a forensic analyst extracting structured data from evidence documents.
+function getModel() {
+    if (!_model) {
+        _model = new ChatGroq({
+            model: "openai/gpt-oss-120b",
+            temperature: 0.0,
+            maxRetries: 10,
+            timeout: 120_000,
+        });
+    }
+    return _model;
+}
+
+function buildExtractionChain() {
+    const prompt = ChatPromptTemplate.fromMessages([
+        [
+            "system",
+            `You are a forensic analyst extracting structured data from evidence documents.
 Rules:
 - Only extract what is EXPLICITLY stated. Do not infer or assume.
 - Generate a new UUID for each entity id.
 - If a date is mentioned but not precise, use your best ISO8601 approximation.
 - Confidence scores reflect how certain you are based on the text alone.`,
-    ],
-    ["human", "{text}"],
-]);
+        ],
+        ["human", "{text}"],
+    ]);
+    return prompt.pipe(getModel().withStructuredOutput(ExtractionSchema));
+}
 
-const extractionChain = prompt.pipe(model.withStructuredOutput(ExtractionSchema));
+function getExtractionChain() {
+    if (!_extractionChain) {
+        _extractionChain = buildExtractionChain();
+    }
+    return _extractionChain;
+}
 
 export class ExtractionProcessor {
     static async handle(job: Job<ExtractEntitiesPayload>) {
@@ -63,7 +77,7 @@ export class ExtractionProcessor {
         const text = buffer.toString("utf-8");
 
         await job.updateProgress(30);
-        const extraction = await extractionChain.invoke({ text });
+        const extraction = await getExtractionChain().invoke({ text });
 
         await job.updateProgress(80);
         const extractionKey = `cases/${caseId}/extraction/${evidenceId}.json`;

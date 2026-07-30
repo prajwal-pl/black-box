@@ -7,15 +7,22 @@ import { StorageService } from "../../services/storage.service";
 import { Document } from "@langchain/core/documents";
 import { reasoningQueue } from "../definitions/reasoning.queue";
 
-const embeddings = new FireworksEmbeddings({
-    model: "accounts/fireworks/models/qwen3-embedding-8b",
-    batchSize: 512,
-})
+// Lazy singleton — instantiated on first use so process.env is populated by then
+let _vectorStore: QdrantVectorStore | null = null;
 
-const vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
-    url: process.env.QDRANT_URL!,
-    collectionName: process.env.QDRANT_COLLECTION!,
-})
+async function getVectorStore() {
+    if (!_vectorStore) {
+        const embeddings = new FireworksEmbeddings({
+            model: "accounts/fireworks/models/qwen3-embedding-8b",
+            batchSize: 512,
+        });
+        _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+            url: process.env.QDRANT_URL!,
+            collectionName: process.env.QDRANT_COLLECTION!,
+        });
+    }
+    return _vectorStore;
+}
 
 const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1000,
@@ -44,6 +51,7 @@ export class EmbeddingProcessor {
         const splits = await splitter.splitDocuments(docs)
         await job.updateProgress(50);
 
+        const vectorStore = await getVectorStore();
         await vectorStore.addDocuments(splits)
 
         await job.updateProgress(80);
