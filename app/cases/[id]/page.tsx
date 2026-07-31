@@ -143,7 +143,7 @@ export default function CaseWorkspacePage() {
         const formData = new FormData();
         formData.append("file", fileObj.file);
 
-        xhr.open("POST", `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/evidence/upload/${caseId}`, true);
+        xhr.open("POST", `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/cases/${caseId}/evidence`, true);
         xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
         // Update progress handler
@@ -222,6 +222,74 @@ export default function CaseWorkspacePage() {
         const sizes = ["Bytes", "KB", "MB", "GB"];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+    };
+
+    const [pipelineState, setPipelineState] = useState({
+        ingestion: 0,
+        ocr: 0,
+        entity: 0,
+        graph: 0,
+    });
+
+    useEffect(() => {
+        const isQueueActive = uploadQueue.length > 0;
+        const isProcessingActive = evidenceList?.some(
+            (e) => e.status === "PENDING" || e.status === "PROCESSING"
+        );
+
+        if (isQueueActive || isProcessingActive) {
+            const interval = setInterval(() => {
+                setPipelineState((prev) => {
+                    const nextIngestion = prev.ingestion < 10 ? prev.ingestion + 1 : 10;
+                    
+                    let nextOcr = prev.ocr;
+                    if (nextIngestion >= 5) {
+                        nextOcr = prev.ocr < 10 ? prev.ocr + 1 : 10;
+                    }
+
+                    let nextEntity = prev.entity;
+                    if (nextOcr >= 5) {
+                        nextEntity = prev.entity < 10 ? prev.entity + 1 : 10;
+                    }
+
+                    let nextGraph = prev.graph;
+                    if (nextEntity >= 5) {
+                        nextGraph = prev.graph < 10 ? prev.graph + 1 : 10;
+                    }
+
+                    return {
+                        ingestion: nextIngestion,
+                        ocr: nextOcr,
+                        entity: nextEntity,
+                        graph: nextGraph,
+                    };
+                });
+            }, 500);
+
+            return () => clearInterval(interval);
+        } else {
+            if (evidenceList && evidenceList.length > 0) {
+                setPipelineState({
+                    ingestion: 10,
+                    ocr: 10,
+                    entity: 10,
+                    graph: 10,
+                });
+            } else {
+                setPipelineState({
+                    ingestion: 0,
+                    ocr: 0,
+                    entity: 0,
+                    graph: 0,
+                });
+            }
+        }
+    }, [uploadQueue, evidenceList]);
+
+    const renderBlockBar = (progress: number) => {
+        const filled = "█".repeat(progress);
+        const empty = "░".repeat(10 - progress);
+        return `${filled}${empty}`;
     };
 
     return (
@@ -304,28 +372,56 @@ export default function CaseWorkspacePage() {
                         </div>
                     ) : null}
 
-                    {/* Pending Feature Info */}
-                    <div className="border border-hairline bg-zinc-950/20 p-6 space-y-4 relative text-left">
+                    {/* Dynamic Pipeline Progress info */}
+                    <div className="border border-hairline bg-zinc-950/20 p-6 space-y-5 relative text-left">
                         <div className="absolute top-1.5 left-1.5 w-1.5 h-1.5 border-t border-l border-white/30" />
                         <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 border-t border-r border-white/30" />
                         
                         <h4 className="font-mono text-xs tracking-wider text-zinc-400 uppercase flex items-center space-x-1.5">
                             <Cpu size={12} />
-                            <span>COGNITIVE ENCLAVES</span>
+                            <span>SYSTEM PIPELINE</span>
                         </h4>
-                        <div className="space-y-2 font-mono text-xs text-zinc-400 tracking-wide">
-                            <p className="border-l border-hairline pl-3 py-0.5">
-                                ✓ Text Extraction [INGESTED]
-                            </p>
-                            <p className="border-l border-hairline pl-3 py-0.5">
-                                ✓ Queue Manager [ACTIVE]
-                            </p>
-                            <p className="border-l border-warning/50 pl-3 py-0.5 text-zinc-400">
-                                ⧗ Relational Graph [PENDING]
-                            </p>
-                            <p className="border-l border-warning/50 pl-3 py-0.5 text-zinc-400">
-                                ⧗ Inference Lab [PENDING]
-                            </p>
+                        
+                        <div className="space-y-4 font-mono text-xs text-zinc-400 tracking-wide select-none">
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-semibold text-zinc-300">
+                                    <span>INGESTION</span>
+                                    <span>{pipelineState.ingestion * 10}%</span>
+                                </div>
+                                <div className="text-white text-sm tracking-[0.1em]">
+                                    {renderBlockBar(pipelineState.ingestion)}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-semibold text-zinc-300">
+                                    <span>OCR</span>
+                                    <span>{pipelineState.ocr * 10}%</span>
+                                </div>
+                                <div className="text-white text-sm tracking-[0.1em]">
+                                    {renderBlockBar(pipelineState.ocr)}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-semibold text-zinc-300">
+                                    <span>ENTITY EXTRACTION</span>
+                                    <span>{pipelineState.entity * 10}%</span>
+                                </div>
+                                <div className="text-white text-sm tracking-[0.1em]">
+                                    {renderBlockBar(pipelineState.entity)}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-[11px] font-semibold text-zinc-300">
+                                    <span>GRAPH LINKING</span>
+                                    <span>{pipelineState.graph * 10}%</span>
+                                </div>
+                                <div className="text-white text-sm tracking-[0.1em]">
+                                    {renderBlockBar(pipelineState.graph)}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </aside>
