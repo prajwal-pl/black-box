@@ -6,7 +6,7 @@ export const getTimeline: RequestHandler = async (req, res) => {
     try {
         const events = await db.timelineEvent.findMany({
             where: { caseId },
-            orderBy: { createdAt: "asc" },
+            orderBy: [{ occuredAt: "asc" }, { createdAt: "asc" }],
         });
         res.json(events);
     } catch (error) {

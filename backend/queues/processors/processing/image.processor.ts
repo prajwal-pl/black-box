@@ -4,7 +4,7 @@ import { StorageService } from "../../../services/storage.service";
 import Tesseract from "tesseract.js";
 import { graphQueue } from "../../definitions/graph.queue";
 
-export class TextProcessor {
+export class ImageProcessor {
     static async handle(job: Job<ProcessEvidencePayload>) {
         const { caseId, evidenceId, storageKey } = job.data;
 

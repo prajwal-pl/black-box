@@ -1,5 +1,4 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { ChatFireworks } from "@langchain/fireworks"
 import { ChatGroq } from "@langchain/groq"
 import type { Job } from "bullmq";
 import z from "zod/v4";
@@ -86,7 +85,8 @@ export class ExtractionProcessor {
         await graphQueue.add(JOB_NAMES.UPDATE_GRAPH, {
             evidenceId,
             caseId,
-            extractionKey,
+            extractionResultKey: extractionKey,
+            processorVersion: "1.0",
             extractionVersion: "1.0"
         }, { priority: JOB_PRIORITY.GRAPH_UPDATE });
 

@@ -66,6 +66,56 @@ export const getCaseById: RequestHandler = async (req, res) => {
     }
 }
 
-export const updateCase: RequestHandler = (req, res) => { }
+export const updateCase: RequestHandler = async (req, res) => {
+    const { id } = req.params;
+    const userId = req.userId;
+    const { name, status, severity } = req.body;
 
-export const deleteCase: RequestHandler = (req, res) => { }
+    try {
+        const existing = await db.case.findUnique({
+            where: { id: id as string, userId: userId as string },
+        });
+
+        if (!existing) {
+            return res.status(404).json({ message: "Case not found" });
+        }
+
+        const updated = await db.case.update({
+            where: { id: id as string },
+            data: {
+                ...(name !== undefined && { name }),
+                ...(status !== undefined && { status }),
+                ...(severity !== undefined && { severity }),
+            },
+        });
+
+        res.json({ message: "Case updated successfully", case: updated });
+    } catch (error) {
+        console.error("Error updating case:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+export const deleteCase: RequestHandler = async (req, res) => {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    try {
+        const existing = await db.case.findUnique({
+            where: { id: id as string, userId: userId as string },
+        });
+
+        if (!existing) {
+            return res.status(404).json({ message: "Case not found" });
+        }
+
+        // Delete related evidence first to avoid FK constraint violations
+        await db.evidence.deleteMany({ where: { caseId: id as string } });
+        await db.case.delete({ where: { id: id as string } });
+
+        res.json({ message: "Case deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting case:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}

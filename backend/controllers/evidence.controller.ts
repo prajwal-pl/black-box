@@ -74,10 +74,6 @@ export const getEvidenceByCase: RequestHandler = async (req, res) => {
 
         const evidence = await db.evidence.findMany({ where: { caseId } });
 
-        if (!evidence || evidence.length === 0) {
-            return res.status(404).json({ error: "No evidence found for this case" });
-        }
-
         res.json({ evidence });
     } catch (error) {
         console.error("Failed to get evidence by case:", error);
