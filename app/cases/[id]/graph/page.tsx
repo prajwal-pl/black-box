@@ -43,6 +43,33 @@ export default function GraphWorkspacePage() {
     const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
     const [inspectorTab, setInspectorTab] = useState<"node" | "ai">("node");
     const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+    const [rightWidth, setRightWidth] = useState(320);
+    const [isResizingRight, setIsResizingRight] = useState(false);
+
+    const startResizing = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizingRight(true);
+    };
+
+    useEffect(() => {
+        if (!isResizingRight) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const newWidth = Math.max(220, Math.min(500, window.innerWidth - e.clientX));
+            setRightWidth(newWidth);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizingRight(false);
+        };
+
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [isResizingRight]);
 
     const svgRef = useRef<SVGSVGElement>(null);
     const rafRef = useRef<number | null>(null);
@@ -116,7 +143,7 @@ export default function GraphWorkspacePage() {
     })();
 
     return (
-        <div className="flex h-full w-full bg-black text-white overflow-hidden">
+        <div className={`flex h-full w-full bg-black text-white overflow-hidden ${isResizingRight ? "select-none cursor-col-resize" : ""}`}>
             {/* Main Canvas Area */}
             <div className="flex-grow flex flex-col min-w-0 h-full relative">
                 {/* Toolbar */}
@@ -217,10 +244,24 @@ export default function GraphWorkspacePage() {
                 )}
             </div>
 
+            {/* Custom AI sidebar resize handle */}
+            {!isRightCollapsed && (
+                <div 
+                    onMouseDown={startResizing}
+                    className={`w-[3px] hover:w-[5px] cursor-col-resize bg-zinc-900 hover:bg-zinc-700 transition-all shrink-0 select-none ${
+                        isResizingRight ? "bg-zinc-500 w-[5px]" : ""
+                    }`}
+                />
+            )}
+            {isRightCollapsed && (
+                <div className="w-[1px] bg-zinc-900 shrink-0" />
+            )}
+
             {/* Custom AI sidebar / Inspector panel container */}
-            <div className={`transition-all duration-300 ease-in-out shrink-0 h-full border-l border-zinc-800 ${
-                isRightCollapsed ? "w-12 bg-black/40" : "w-[320px] bg-zinc-950/20"
-            }`}>
+            <div 
+                style={{ width: isRightCollapsed ? 48 : rightWidth }}
+                className="shrink-0 h-full overflow-hidden border-l border-zinc-900 bg-zinc-950/10"
+            >
                 {isRightCollapsed ? (
                     <div className="flex flex-col items-center py-4 w-full h-full text-center select-none">
                         <button

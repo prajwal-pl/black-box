@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { evidenceApi, Evidence } from "@/lib/api/evidence";
@@ -48,6 +48,33 @@ export default function EvidenceWorkspacePage() {
     const [dragActive, setDragActive] = useState(false);
     const [selected, setSelected] = useState<Evidence | null>(null);
     const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+    const [rightWidth, setRightWidth] = useState(320);
+    const [isResizingRight, setIsResizingRight] = useState(false);
+
+    const startResizing = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizingRight(true);
+    };
+
+    useEffect(() => {
+        if (!isResizingRight) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const newWidth = Math.max(220, Math.min(500, window.innerWidth - e.clientX));
+            setRightWidth(newWidth);
+        };
+
+        const handleMouseUp = () => {
+            setIsResizingRight(false);
+        };
+
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [isResizingRight]);
 
     const { data: evidenceList, isLoading, error } = useQuery<Evidence[]>({
         queryKey: ["evidence", caseId],
@@ -128,7 +155,7 @@ export default function EvidenceWorkspacePage() {
     };
 
     return (
-        <div className="flex h-full w-full bg-black text-white overflow-hidden">
+        <div className={`flex h-full w-full bg-black text-white overflow-hidden ${isResizingRight ? "select-none cursor-col-resize" : ""}`}>
             {/* Main Workspace Area */}
             <div className="flex-grow flex flex-col min-w-0 h-full">
                 {/* Header */}
@@ -316,10 +343,24 @@ export default function EvidenceWorkspacePage() {
                 </div>
             </div>
 
+            {/* Resize Handle */}
+            {!isRightCollapsed && (
+                <div 
+                    onMouseDown={startResizing}
+                    className={`w-[3px] hover:w-[5px] cursor-col-resize bg-zinc-900 hover:bg-zinc-700 transition-all shrink-0 select-none ${
+                        isResizingRight ? "bg-zinc-500 w-[5px]" : ""
+                    }`}
+                />
+            )}
+            {isRightCollapsed && (
+                <div className="w-[1px] bg-zinc-900 shrink-0" />
+            )}
+
             {/* Custom AI sidebar panel container */}
-            <div className={`transition-all duration-300 ease-in-out shrink-0 h-full ${
-                isRightCollapsed ? "w-12" : "w-[320px]"
-            }`}>
+            <div 
+                style={{ width: isRightCollapsed ? 48 : rightWidth }}
+                className="shrink-0 h-full overflow-hidden"
+            >
                 <CaseAIPanel
                     title="EVIDENCE AI"
                     suggestions={[
