@@ -80,15 +80,25 @@ export class ExtractionProcessor {
         const buffer = await StorageService.download(normalizedTextKey);
         const text = buffer.toString("utf-8");
         console.log(`[EXTRACTION] Downloaded normalized text: ${text.length} chars`);
-        if (text.length < 10) {
-            console.warn(`[EXTRACTION] ⚠ WARNING: normalized text is very short (${text.length} chars) — possible empty file or encoding issue`);
+        console.log(`[EXTRACTION] First 500 chars of text: "${text.substring(0, 500)}"`);
+        if (text.length < 100) {
+            console.warn(`[EXTRACTION] ⚠ WARNING: normalized text is very short (${text.length} chars) — PDF may be scanned/image-based or empty`);
+        }
+
+        // Truncate very long texts to avoid LLM context window overflow.
+        // ~16000 chars ≈ 4000 tokens, well within model limits.
+        const MAX_EXTRACTION_CHARS = 16_000;
+        const truncated = text.length > MAX_EXTRACTION_CHARS;
+        const textForLLM = truncated ? text.substring(0, MAX_EXTRACTION_CHARS) : text;
+        if (truncated) {
+            console.warn(`[EXTRACTION] ⚠ Text truncated from ${text.length} to ${MAX_EXTRACTION_CHARS} chars to avoid context overflow`);
         }
 
         await job.updateProgress(30);
-        console.log(`[EXTRACTION] Calling LLM for entity/relationship/event extraction...`);
+        console.log(`[EXTRACTION] Calling LLM for entity/relationship/event extraction (sending ${textForLLM.length} chars)...`);
         let extraction;
         try {
-            extraction = await getExtractionChain().invoke({ text });
+            extraction = await getExtractionChain().invoke({ text: textForLLM });
         } catch (err) {
             console.error(`[EXTRACTION] ✗ LLM call FAILED for evidenceId=${evidenceId}:`, err);
             throw err;
