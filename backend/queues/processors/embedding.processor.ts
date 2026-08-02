@@ -2,7 +2,7 @@ import { FireworksEmbeddings } from "@langchain/fireworks";
 import { QdrantVectorStore } from "@langchain/qdrant"
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import type { Job } from "bullmq";
-import { JOB_NAMES, JOB_PRIORITY, type GenerateEmbeddingsPayload } from "../jobs/types";
+import { JOB_NAMES, JOB_PRIORITY, type GenerateEmbeddingsPayload, type ScanContradictionsPayload } from "../jobs/types";
 import { StorageService } from "../../services/storage.service";
 import { Document } from "@langchain/core/documents";
 import { reasoningQueue } from "../definitions/reasoning.queue";
@@ -12,6 +12,7 @@ let _vectorStore: QdrantVectorStore | null = null;
 
 async function getVectorStore() {
     if (!_vectorStore) {
+        console.log(`[EMBEDDING] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`);
         const embeddings = new FireworksEmbeddings({
             model: "accounts/fireworks/models/qwen3-embedding-8b",
             batchSize: 512,
@@ -20,6 +21,7 @@ async function getVectorStore() {
             url: process.env.QDRANT_URL!,
             collectionName: process.env.QDRANT_COLLECTION!,
         });
+        console.log(`[EMBEDDING] Qdrant vector store ready`);
     }
     return _vectorStore;
 }
@@ -33,12 +35,17 @@ export class EmbeddingProcessor {
     static async handle(job: Job<GenerateEmbeddingsPayload>) {
         const { evidenceId, caseId, chunkKeys } = job.data
 
+        console.log(`[EMBEDDING] ▶ START evidenceId=${evidenceId} caseId=${caseId} chunkKeys=${JSON.stringify(chunkKeys)}`);
+
         await job.updateProgress(10);
 
         const rawTexts: string[] = []
         for (const key of chunkKeys) {
+            console.log(`[EMBEDDING] Downloading chunk from: ${key}`);
             const buffer = await StorageService.download(key)
-            rawTexts.push(buffer.toString("utf-8"))
+            const text = buffer.toString("utf-8");
+            console.log(`[EMBEDDING] Downloaded chunk: ${text.length} chars`);
+            rawTexts.push(text)
         }
 
         await job.updateProgress(30);
@@ -48,23 +55,53 @@ export class EmbeddingProcessor {
             metadata: { evidenceId, caseId }
         }))
 
+        console.log(`[EMBEDDING] Splitting ${docs.length} docs into chunks...`);
         const splits = await splitter.splitDocuments(docs)
+        console.log(`[EMBEDDING] Split into ${splits.length} chunks`);
         await job.updateProgress(50);
 
-        const vectorStore = await getVectorStore();
-        await vectorStore.addDocuments(splits)
+        console.log(`[EMBEDDING] Getting vector store...`);
+        let vectorStore;
+        try {
+            vectorStore = await getVectorStore();
+        } catch (err) {
+            console.error(`[EMBEDDING] ✗ Failed to connect to Qdrant:`, err);
+            throw err;
+        }
+
+        console.log(`[EMBEDDING] Adding ${splits.length} chunks to Qdrant...`);
+        try {
+            await vectorStore.addDocuments(splits)
+            console.log(`[EMBEDDING] ✓ ${splits.length} chunks added to Qdrant`);
+        } catch (err) {
+            console.error(`[EMBEDDING] ✗ Qdrant addDocuments FAILED:`, err);
+            throw err;
+        }
 
         await job.updateProgress(80);
 
-        await reasoningQueue.add(JOB_NAMES.UPDATE_HYPOTHESES, {
+        console.log(`[EMBEDDING] Enqueuing UPDATE_HYPOTHESES job...`);
+        const hypothesisJob = await reasoningQueue.add(JOB_NAMES.UPDATE_HYPOTHESES, {
             caseId,
             triggerReason: "new-evidence",
             newEvidenceCount: 1,
         }, {
             priority: JOB_PRIORITY.HYPOTHESES
         })
+        console.log(`[EMBEDDING] UPDATE_HYPOTHESES job enqueued: jobId=${hypothesisJob.id}`);
+
+        console.log(`[EMBEDDING] Enqueuing SCAN_CONTRADICTIONS job...`);
+        const contradictionJob = await reasoningQueue.add(JOB_NAMES.SCAN_CONTRADICTIONS, {
+            caseId,
+            evidenceId,
+            processorVersion: "1.0",
+        } satisfies ScanContradictionsPayload & { processorVersion: string }, {
+            priority: JOB_PRIORITY.HYPOTHESES
+        })
+        console.log(`[EMBEDDING] SCAN_CONTRADICTIONS job enqueued: jobId=${contradictionJob.id}`);
 
         await job.updateProgress(100);
+        console.log(`[EMBEDDING] ✓ DONE evidenceId=${evidenceId} chunkCount=${splits.length}`);
         return { evidenceId, chunkCount: splits.length };
     }
 }

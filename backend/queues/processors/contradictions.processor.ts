@@ -24,13 +24,16 @@ let _contradictionChain: ReturnType<typeof buildContradictionChain> | null = nul
 
 function getModel() {
     if (!_model) {
+        console.log(`[CONTRADICTIONS] Initialising ChatGroq model...`);
         _model = new ChatGroq({ model: "openai/gpt-oss-120b", temperature: 0, maxRetries: 10, timeout: 120_000 });
+        console.log(`[CONTRADICTIONS] ChatGroq model ready`);
     }
     return _model;
 }
 
 async function getVectorStore() {
     if (!_vectorStore) {
+        console.log(`[CONTRADICTIONS] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`);
         const embeddings = new FireworksEmbeddings({
             model: "accounts/fireworks/models/qwen3-embedding-8b",
             batchSize: 512,
@@ -39,6 +42,7 @@ async function getVectorStore() {
             url: process.env.QDRANT_URL!,
             collectionName: process.env.QDRANT_COLLECTION!,
         });
+        console.log(`[CONTRADICTIONS] Qdrant vector store ready`);
     }
     return _vectorStore;
 }
@@ -65,62 +69,104 @@ export class ContradictionProcessor {
     static async handle(job: Job<ScanContradictionsPayload>) {
         const { caseId, evidenceId } = job.data;
 
+        console.log(`[CONTRADICTIONS] ▶ START evidenceId=${evidenceId} caseId=${caseId}`);
+
         await job.updateProgress(10);
 
-        const evidence = await db.evidence.findUniqueOrThrow({
-            where: {
-                id: evidenceId,
-            },
-            select: {
-                storageKey: true,
-            },
-        })
-        const buffer = await StorageService.download(evidence.storageKey);
-        const newEvidenceText = buffer.toString("utf-8");
+        // Read normalized text (not raw storageKey which points to binary PDF)
+        const normalizedTextKey = `cases/${caseId}/normalized/${evidenceId}.txt`;
+        console.log(`[CONTRADICTIONS] Downloading normalized text from: ${normalizedTextKey}`);
+        let newEvidenceText: string;
+        try {
+            const buffer = await StorageService.download(normalizedTextKey);
+            newEvidenceText = buffer.toString("utf-8");
+            console.log(`[CONTRADICTIONS] Downloaded normalized text: ${newEvidenceText.length} chars`);
+        } catch (err) {
+            console.error(`[CONTRADICTIONS] ✗ Failed to download normalized text from ${normalizedTextKey}:`, err);
+            throw err;
+        }
 
         await job.updateProgress(30);
 
-        const vectorStore = await getVectorStore();
-        const similarChunks = await vectorStore.similaritySearch(
-            newEvidenceText,
-            10,
-            {
-                must: [
-                    {
-                        key: "metadata.caseId",
-                        match: {
-                            value: caseId,
-                        }
-                    }]
-            }
-        )
+        console.log(`[CONTRADICTIONS] Connecting to Qdrant vector store...`);
+        let vectorStore;
+        try {
+            vectorStore = await getVectorStore();
+        } catch (err) {
+            console.error(`[CONTRADICTIONS] ✗ Failed to connect to Qdrant:`, err);
+            throw err;
+        }
+
+        console.log(`[CONTRADICTIONS] Searching for similar chunks in Qdrant (caseId=${caseId})...`);
+        let similarChunks;
+        try {
+            similarChunks = await vectorStore.similaritySearch(
+                newEvidenceText,
+                10,
+                {
+                    must: [
+                        {
+                            key: "metadata.caseId",
+                            match: {
+                                value: caseId,
+                            }
+                        }]
+                }
+            )
+            console.log(`[CONTRADICTIONS] Found ${similarChunks.length} similar chunks in vector store`);
+        } catch (err) {
+            console.error(`[CONTRADICTIONS] ✗ Qdrant similaritySearch FAILED:`, err);
+            throw err;
+        }
 
         if (!similarChunks.length) {
+            console.log(`[CONTRADICTIONS] No similar chunks found — skipping LLM contradiction scan (no existing evidence to compare)`);
             await job.updateProgress(100);
             return { evidenceId, contradictions: [] };
         }
 
         const existingEvidenceText = similarChunks.map(chunk => chunk.pageContent).join("\n---\n");
+        console.log(`[CONTRADICTIONS] Calling LLM for contradiction analysis...`);
 
-        const result = await getContradictionChain().invoke({
-            newEvidence: newEvidenceText,
-            existingEvidence: existingEvidenceText,
-        });
+        let result;
+        try {
+            result = await getContradictionChain().invoke({
+                newEvidence: newEvidenceText,
+                existingEvidence: existingEvidenceText,
+            });
+            console.log(`[CONTRADICTIONS] LLM returned ${result.contradictions.length} contradictions`);
+        } catch (err) {
+            console.error(`[CONTRADICTIONS] ✗ LLM call FAILED:`, err);
+            throw err;
+        }
 
         await job.updateProgress(80);
 
+        if (result.contradictions.length === 0) {
+            console.log(`[CONTRADICTIONS] No contradictions found — nothing to persist`);
+        }
+
         for (const c of result.contradictions) {
-            await db.contradictions.create({
-                data: {
-                    caseId,
-                    title: c.title,
-                    description: c.description,
-                    evidenceIds: [evidenceId]
-                }
-            })
+            console.log(`[CONTRADICTIONS] Inserting contradiction: "${c.title}" severity=${c.severity}`);
+            try {
+                await db.contradictions.create({
+                    data: {
+                        caseId,
+                        title: c.title,
+                        description: c.description,
+                        severity: c.severity,
+                        evidenceIds: [evidenceId]
+                    }
+                })
+                console.log(`[CONTRADICTIONS] ✓ Contradiction inserted`);
+            } catch (err) {
+                console.error(`[CONTRADICTIONS] ✗ DB insert FAILED for contradiction "${c.title}":`, err);
+                throw err;
+            }
         }
 
         await job.updateProgress(100);
+        console.log(`[CONTRADICTIONS] ✓ DONE evidenceId=${evidenceId} contradictionCount=${result.contradictions.length}`);
         return { evidenceId, contradictionCount: result.contradictions.length };
     }
 }

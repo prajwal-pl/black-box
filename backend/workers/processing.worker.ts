@@ -15,6 +15,7 @@ import db from "../lib/db";
 const worker = new Worker(
     QUEUE_NAMES.PROCESSING,
     async (job) => {
+        console.log(`[PROCESSING WORKER] ⚙ Received job: name=${job.name} id=${job.id} data=${JSON.stringify(job.data)}`);
         switch (job.name) {
             case JOB_NAMES.PROCESS_PDF:
                 return await PdfProcessor.handle(job);
@@ -29,8 +30,10 @@ const worker = new Worker(
             case JOB_NAMES.PROCESS_AUDIO:
             case JOB_NAMES.PROCESS_VIDEO:
                 // Audio/video not yet supported — mark as failed with a clear message
+                console.error(`[PROCESSING WORKER] ✗ Unsupported job type: ${job.name}`);
                 throw new Error(`Processing for ${job.name} is not yet supported`);
             default:
+                console.error(`[PROCESSING WORKER] ✗ Unknown job name: ${job.name}`);
                 throw new Error(`Unknown job name: ${job.name}`);
         }
     },
@@ -40,30 +43,31 @@ const worker = new Worker(
     }
 );
 
-worker.on("completed", async (job) => {
-    console.log(`Processing job ${job.id} (${job.name}) completed`);
+worker.on("completed", async (job, result) => {
+    console.log(`[PROCESSING WORKER] ✓ Job COMPLETED: name=${job.name} id=${job.id} result=${JSON.stringify(result)}`);
     // Mark evidence as COMPLETED in DB
     const { evidenceId } = job.data;
     await db.evidence.update({
         where: { id: evidenceId },
         data: { status: "COMPLETED" },
-    }).catch((err) => console.error("Failed to mark evidence COMPLETED:", err));
+    }).catch((err) => console.error("[PROCESSING WORKER] Failed to mark evidence COMPLETED:", err));
 });
 
 worker.on("failed", async (job, error) => {
     if (!job) return;
 
-    console.error(`Processing job ${job.id} (${job.name}) failed:`, error.message);
+    console.error(`[PROCESSING WORKER] ✗ Job FAILED: name=${job.name} id=${job.id} attempt=${job.attemptsMade} error=${error.message}`, error.stack);
 
     // Mark evidence as FAILED in DB
     const { evidenceId } = job.data;
     await db.evidence.update({
         where: { id: evidenceId },
         data: { status: "FAILED" },
-    }).catch((err) => console.error("Failed to mark evidence FAILED:", err));
+    }).catch((err) => console.error("[PROCESSING WORKER] Failed to mark evidence FAILED:", err));
 
     // Send to dead letter queue after exhausting all retries
     if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
+        console.error(`[PROCESSING WORKER] ✗ Job exhausted all retries — sending to dead letter queue`);
         await EvidenceQueueService.sendToDeadLetter({
             originalQueue: QUEUE_NAMES.PROCESSING,
             originalJobName: job.name,
@@ -76,7 +80,7 @@ worker.on("failed", async (job, error) => {
 });
 
 worker.on("error", (error) => {
-    console.error("Processing worker error:", error);
+    console.error("[PROCESSING WORKER] ✗ Worker error:", error);
 });
 
 process.on("SIGTERM", async () => {

@@ -34,12 +34,14 @@ let _extractionChain: ReturnType<typeof buildExtractionChain> | null = null;
 
 function getModel() {
     if (!_model) {
+        console.log(`[EXTRACTION] Initialising ChatGroq model...`);
         _model = new ChatGroq({
             model: "openai/gpt-oss-120b",
             temperature: 0.0,
             maxRetries: 10,
             timeout: 120_000,
         });
+        console.log(`[EXTRACTION] ChatGroq model ready`);
     }
     return _model;
 }
@@ -71,26 +73,48 @@ export class ExtractionProcessor {
     static async handle(job: Job<ExtractEntitiesPayload>) {
         const { evidenceId, caseId, normalizedTextKey } = job.data
 
+        console.log(`[EXTRACTION] ▶ START evidenceId=${evidenceId} caseId=${caseId} normalizedTextKey=${normalizedTextKey}`);
+
         await job.updateProgress(10);
+        console.log(`[EXTRACTION] Downloading normalized text from: ${normalizedTextKey}`);
         const buffer = await StorageService.download(normalizedTextKey);
         const text = buffer.toString("utf-8");
+        console.log(`[EXTRACTION] Downloaded normalized text: ${text.length} chars`);
+        if (text.length < 10) {
+            console.warn(`[EXTRACTION] ⚠ WARNING: normalized text is very short (${text.length} chars) — possible empty file or encoding issue`);
+        }
 
         await job.updateProgress(30);
-        const extraction = await getExtractionChain().invoke({ text });
+        console.log(`[EXTRACTION] Calling LLM for entity/relationship/event extraction...`);
+        let extraction;
+        try {
+            extraction = await getExtractionChain().invoke({ text });
+        } catch (err) {
+            console.error(`[EXTRACTION] ✗ LLM call FAILED for evidenceId=${evidenceId}:`, err);
+            throw err;
+        }
+        console.log(`[EXTRACTION] LLM extraction complete — entities=${extraction.entities.length} relationships=${extraction.relationships.length} events=${extraction.events.length}`);
+        console.log(`[EXTRACTION] Entities:`, JSON.stringify(extraction.entities.map(e => ({ name: e.name, type: e.type }))));
+        console.log(`[EXTRACTION] Events:`, JSON.stringify(extraction.events.map(e => ({ title: e.title, occurredAt: e.occurredAt }))));
 
         await job.updateProgress(80);
         const extractionKey = `cases/${caseId}/extraction/${evidenceId}.json`;
+        console.log(`[EXTRACTION] Uploading extraction result to: ${extractionKey}`);
         await StorageService.upload(extractionKey, Buffer.from(JSON.stringify(extraction, null, 2)), "application/json");
+        console.log(`[EXTRACTION] Extraction JSON uploaded`);
 
-        await graphQueue.add(JOB_NAMES.UPDATE_GRAPH, {
+        console.log(`[EXTRACTION] Enqueuing UPDATE_GRAPH job...`);
+        const enqueued = await graphQueue.add(JOB_NAMES.UPDATE_GRAPH, {
             evidenceId,
             caseId,
             extractionResultKey: extractionKey,
             processorVersion: "1.0",
             extractionVersion: "1.0"
         }, { priority: JOB_PRIORITY.GRAPH_UPDATE });
+        console.log(`[EXTRACTION] UPDATE_GRAPH job enqueued: jobId=${enqueued.id}`);
 
         await job.updateProgress(100);
+        console.log(`[EXTRACTION] ✓ DONE evidenceId=${evidenceId} entityCount=${extraction.entities.length}`);
         return { evidenceId, extractionKey, entityCount: extraction.entities.length };
     }
 }

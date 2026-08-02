@@ -22,18 +22,21 @@ let _hypothesisChain: ReturnType<typeof buildHypothesisChain> | null = null;
 
 function getModel() {
     if (!_model) {
+        console.log(`[REASONING] Initialising ChatGroq model...`);
         _model = new ChatGroq({
             model: "openai/gpt-oss-120b",
             temperature: 0,
             maxRetries: 10,
             timeout: 120_000,
         });
+        console.log(`[REASONING] ChatGroq model ready`);
     }
     return _model;
 }
 
 async function getVectorStore() {
     if (!_vectorStore) {
+        console.log(`[REASONING] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`);
         const embeddings = new FireworksEmbeddings({
             model: "accounts/fireworks/models/qwen3-embedding-8b",
             batchSize: 512,
@@ -42,6 +45,7 @@ async function getVectorStore() {
             url: process.env.QDRANT_URL!,
             collectionName: process.env.QDRANT_COLLECTION!,
         });
+        console.log(`[REASONING] Qdrant vector store ready`);
     }
     return _vectorStore;
 }
@@ -81,13 +85,36 @@ export class ReasoningProcessor {
     static async handle(job: Job<UpdateHypothesesPayload>) {
         const { caseId } = job.data
 
+        console.log(`[REASONING] ▶ START caseId=${caseId} triggerReason=${job.data.triggerReason}`);
+
         await job.updateProgress(10);
 
-        const vectorStore = await getVectorStore();
-        const relevantChunks = await vectorStore.similaritySearch(`forensic evidence case ${caseId}`, 10, { must: [{ key: "metadata.caseId", match: { value: caseId } }] })
+        console.log(`[REASONING] Connecting to Qdrant vector store...`);
+        let vectorStore;
+        try {
+            vectorStore = await getVectorStore();
+        } catch (err) {
+            console.error(`[REASONING] ✗ Failed to connect to Qdrant:`, err);
+            throw err;
+        }
+
+        console.log(`[REASONING] Searching Qdrant for relevant evidence chunks (caseId=${caseId})...`);
+        let relevantChunks;
+        try {
+            relevantChunks = await vectorStore.similaritySearch(`forensic evidence case ${caseId}`, 10, { must: [{ key: "metadata.caseId", match: { value: caseId } }] })
+            console.log(`[REASONING] Found ${relevantChunks.length} relevant chunks`);
+        } catch (err) {
+            console.error(`[REASONING] ✗ Qdrant similaritySearch FAILED:`, err);
+            throw err;
+        }
+
+        if (relevantChunks.length === 0) {
+            console.warn(`[REASONING] ⚠ WARNING: No relevant chunks found in Qdrant for caseId=${caseId} — hypotheses may be empty or generic`);
+        }
 
         await job.updateProgress(30);
 
+        console.log(`[REASONING] Fetching existing hypotheses from DB for caseId=${caseId}...`);
         const existingHypotheses = await db.hypothesis.findMany({
             where: {
                 caseId,
@@ -97,6 +124,7 @@ export class ReasoningProcessor {
             },
             take: 10
         })
+        console.log(`[REASONING] Found ${existingHypotheses.length} existing hypotheses`);
 
         const evidence = relevantChunks.map((c, i) => `[${i + 1} ${c.pageContent}]`).join("\n\n---\n\n")
 
@@ -104,25 +132,42 @@ export class ReasoningProcessor {
 
         await job.updateProgress(50);
 
-        const result = await getHypothesisChain().invoke({
-            evidence,
-            existing
-        })
+        console.log(`[REASONING] Calling LLM for hypothesis generation...`);
+        let result;
+        try {
+            result = await getHypothesisChain().invoke({
+                evidence,
+                existing
+            })
+            console.log(`[REASONING] LLM returned ${result.hypotheses.length} hypotheses`);
+        } catch (err) {
+            console.error(`[REASONING] ✗ LLM call FAILED:`, err);
+            throw err;
+        }
 
         await job.updateProgress(80);
 
+        console.log(`[REASONING] Inserting ${result.hypotheses.length} hypotheses into DB...`);
         for (const h of result.hypotheses) {
-            await db.hypothesis.create({
-                data: {
-                    caseId,
-                    content: h.content,
-                    confidence: h.confidence,
-                    status: "ACTIVE",
-                },
-            });
+            console.log(`[REASONING]   Inserting: confidence=${h.confidence} content="${h.content.substring(0, 80)}..."`);
+            try {
+                await db.hypothesis.create({
+                    data: {
+                        caseId,
+                        content: h.content,
+                        confidence: h.confidence,
+                        status: "ACTIVE",
+                    },
+                });
+            } catch (err) {
+                console.error(`[REASONING] ✗ DB insert FAILED for hypothesis:`, err);
+                throw err;
+            }
         }
+        console.log(`[REASONING] ✓ All hypotheses inserted`);
 
         await job.updateProgress(100);
+        console.log(`[REASONING] ✓ DONE caseId=${caseId} hypothesesCount=${result.hypotheses.length}`);
         return { caseId, hypothesesCount: result.hypotheses.length };
     }
 }
