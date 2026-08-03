@@ -1,5 +1,5 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { FireworksEmbeddings } from "@langchain/fireworks";
+import { FireworksEmbeddings, ChatFireworks } from "@langchain/fireworks";
 import { ChatGroq } from "@langchain/groq";
 import type { Job } from "bullmq";
 import { z } from "zod/v4";
@@ -16,20 +16,20 @@ const HypothesisSchema = z.object({
 });
 
 // Lazy singletons — instantiated on first use so process.env is populated by then
-let _model: ChatGroq | null = null;
+let _model: ChatFireworks | null = null;
 let _vectorStore: QdrantVectorStore | null = null;
 let _hypothesisChain: ReturnType<typeof buildHypothesisChain> | null = null;
 
 function getModel() {
     if (!_model) {
-        console.log(`[REASONING] Initialising ChatGroq model...`);
-        _model = new ChatGroq({
-            model: "openai/gpt-oss-120b",
+        console.log(`[REASONING] Initialising ChatFireworks model...`);
+        _model = new ChatFireworks({
+            model: "accounts/fireworks/models/deepseek-v4-flash-0731",
             temperature: 0,
             maxRetries: 10,
             timeout: 120_000,
         });
-        console.log(`[REASONING] ChatGroq model ready`);
+        console.log(`[REASONING] ChatFireworks model ready`);
     }
     return _model;
 }

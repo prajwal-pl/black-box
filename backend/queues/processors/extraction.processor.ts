@@ -1,5 +1,6 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { ChatGroq } from "@langchain/groq"
+import { ChatFireworks } from "@langchain/fireworks"
 import type { Job } from "bullmq";
 import z from "zod/v4";
 import { JOB_NAMES, JOB_PRIORITY, type ExtractEntitiesPayload } from "../jobs/types";
@@ -29,19 +30,19 @@ const ExtractionSchema = z.object({
 });
 
 // Lazy singletons — instantiated on first use so process.env is populated by then
-let _model: ChatGroq | null = null;
+let _model: ChatFireworks | null = null;
 let _extractionChain: ReturnType<typeof buildExtractionChain> | null = null;
 
 function getModel() {
     if (!_model) {
-        console.log(`[EXTRACTION] Initialising ChatGroq model...`);
-        _model = new ChatGroq({
-            model: "openai/gpt-oss-120b",
+        console.log(`[EXTRACTION] Initialising ChatFireworks model...`);
+        _model = new ChatFireworks({
+            model: "accounts/fireworks/models/deepseek-v4-flash-0731",
             temperature: 0.0,
             maxRetries: 10,
             timeout: 120_000,
         });
-        console.log(`[EXTRACTION] ChatGroq model ready`);
+        console.log(`[EXTRACTION] ChatFireworks model ready`);
     }
     return _model;
 }

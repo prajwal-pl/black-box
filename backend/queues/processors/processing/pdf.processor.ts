@@ -7,8 +7,8 @@ import Tesseract from "tesseract.js";
 import { createCanvas } from "canvas";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
-// Disable the browser-style Worker — pdfjs falls back to running in the main thread
-// which is exactly what we want in a Node.js/Bun worker process.
+// Disable the browser-style Worker — pdfjs runs in the main thread in Node.js/Bun.
+// This must be set before any getDocument() call.
 pdfjs.GlobalWorkerOptions.workerSrc = "";
 
 // Minimum char threshold below which we consider pdf-parse output insufficient.
@@ -41,7 +41,9 @@ async function ocrPdfBuffer(buffer: Buffer): Promise<string> {
         const pngBuffer = canvas.toBuffer("image/png");
         console.log(`[PDF:OCR] Page ${pageNum} rendered (${pngBuffer.byteLength} bytes), running Tesseract...`);
 
-        const { data: { text } } = await Tesseract.recognize(pngBuffer, "eng");
+        const { data: { text } } = await Tesseract.recognize(pngBuffer, "eng", {
+            langPath: new URL(".", import.meta.url).pathname.replace(/\/queues\/processors\/processing\/$/, ""),
+        });
         const trimmed = text.trim();
         console.log(`[PDF:OCR] Page ${pageNum} OCR: ${trimmed.length} chars`);
         if (trimmed.length > 0) {
@@ -93,8 +95,8 @@ export class PdfProcessor {
                 console.log(`[PDF] Page-by-page OCR complete: ${text.length} chars extracted`);
                 console.log(`[PDF] First 300 chars of OCR text: "${text.substring(0, 300)}"`);
             } catch (ocrErr) {
-                console.error(`[PDF] Page-by-page OCR failed:`, ocrErr);
-                // Keep whatever pdf-parse produced (may be minimal page headers)
+                console.error(`[PDF] Page-by-page OCR failed — rethrowing so BullMQ can retry:`, ocrErr);
+                throw ocrErr;
             }
         }
 

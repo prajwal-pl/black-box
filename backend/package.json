@@ -43,7 +43,7 @@
     "multer": "^2.2.0",
     "neo4j-driver": "^6.1.0",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^6.2.108",
+    "pdfjs-dist": "5.4.296",
     "pg": "^8.21.0",
     "tesseract.js": "^7.0.0",
     "uuid": "^14.0.1",
