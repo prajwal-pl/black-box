@@ -4,12 +4,16 @@ import { StorageService } from "../../../services/storage.service";
 import { PDFParse } from "pdf-parse";
 import { graphQueue } from "../../definitions/graph.queue";
 import Tesseract from "tesseract.js";
-import { createCanvas } from "canvas";
+import { CanvasRenderingContext2D, createCanvas } from "canvas";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
 // Disable the browser-style Worker — pdfjs runs in the main thread in Node.js/Bun.
 // This must be set before any getDocument() call.
 pdfjs.GlobalWorkerOptions.workerSrc = "";
+
+// Absolute path to the backend root where eng.traineddata lives.
+// Computed once at module load so Tesseract.js can find the language data.
+const TESSERACT_LANG_PATH = new URL("../../..", import.meta.url).pathname;
 
 // Minimum char threshold below which we consider pdf-parse output insufficient.
 // Scanned PDFs typically yield only page-number headers (~527 chars for 30 pages).
@@ -34,6 +38,7 @@ async function ocrPdfBuffer(buffer: Buffer): Promise<string> {
         const context = canvas.getContext("2d");
 
         await page.render({
+            canvas: canvas as unknown as HTMLCanvasElement,
             canvasContext: context as unknown as CanvasRenderingContext2D,
             viewport,
         }).promise;
@@ -42,7 +47,7 @@ async function ocrPdfBuffer(buffer: Buffer): Promise<string> {
         console.log(`[PDF:OCR] Page ${pageNum} rendered (${pngBuffer.byteLength} bytes), running Tesseract...`);
 
         const { data: { text } } = await Tesseract.recognize(pngBuffer, "eng", {
-            langPath: new URL(".", import.meta.url).pathname.replace(/\/queues\/processors\/processing\/$/, ""),
+            langPath: TESSERACT_LANG_PATH,
         });
         const trimmed = text.trim();
         console.log(`[PDF:OCR] Page ${pageNum} OCR: ${trimmed.length} chars`);
@@ -53,7 +58,7 @@ async function ocrPdfBuffer(buffer: Buffer): Promise<string> {
         page.cleanup();
     }
 
-    await pdf.destroy();
+    await pdf.cleanup();
     return textParts.join("\n\n");
 }
 
@@ -95,8 +100,9 @@ export class PdfProcessor {
                 console.log(`[PDF] Page-by-page OCR complete: ${text.length} chars extracted`);
                 console.log(`[PDF] First 300 chars of OCR text: "${text.substring(0, 300)}"`);
             } catch (ocrErr) {
-                console.error(`[PDF] Page-by-page OCR failed — rethrowing so BullMQ can retry:`, ocrErr);
-                throw ocrErr;
+                // OCR failed (e.g. pdfjs drawImage incompatibility with certain PDFs).
+                // Log and fall through — the job will complete using the pdf-parse output.
+                console.error(`[PDF] ⚠ Page-by-page OCR failed, continuing with pdf-parse output:`, (ocrErr as Error).message);
             }
         }
 

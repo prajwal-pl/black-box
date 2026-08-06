@@ -26,8 +26,8 @@ async function seedPostgres(userId: string) {
 
     // Timeline events
     const evidenceRecords = await db.evidence.findMany({ where: { caseId: caseId1 } });
-    const ev0 = evidenceRecords[0].id;
-    const ev1 = evidenceRecords[1].id;
+    const ev0 = evidenceRecords[0]!.id;
+    const ev1 = evidenceRecords[1]!.id;
 
     await db.timelineEvent.createMany({
         data: [
@@ -75,7 +75,7 @@ async function seedNeo4j() {
         { id: randomUUID(), name: "Meridian Pharma", type: "ORGANIZATION", caseId: caseId2 },
     ];
 
-    const [marcus, vantage, cayman, warehouse, raymond, offshore, elena, osei, meridian] = entities;
+    const [marcus, vantage, cayman, warehouse, raymond, offshore, elena, osei, meridian] = entities as [typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0], typeof entities[0]];
 
     const relationships = [
         { from: marcus.id, to: vantage.id, type: "CONTROLS", confidence: 0.91, caseId: caseId1 },
