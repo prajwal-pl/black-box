@@ -235,6 +235,7 @@ export default function HypothesesWorkspacePage() {
                     placeholder="ASK ABOUT HYPOTHESES..."
                     selectedItemName={selected ? `HYPOTHESIS ${selected.id.slice(0, 6)}` : null}
                     contextType="Hypothesis Lab Reasoning Engine"
+                    caseId={caseId}
                     isCollapsed={isRightCollapsed}
                     onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
                 />

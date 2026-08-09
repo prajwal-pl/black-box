@@ -6,6 +6,7 @@ import {
     getEvidenceByCase,
     getEvidenceStatus,
     deleteEvidence,
+    reprocessEvidence,
 } from "../controllers/evidence.controller";
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.post("/cases/:caseId/evidence", authenticateToken, upload.single("file"),
 router.get("/cases/:caseId/evidence", authenticateToken, getEvidenceByCase);
 router.get("/evidence/:id/status", authenticateToken, getEvidenceStatus);
 router.delete("/evidence/:id", authenticateToken, deleteEvidence);
+router.post("/evidence/:id/reprocess", authenticateToken, reprocessEvidence);
 
 export default router;

@@ -47,35 +47,61 @@ worker.on("completed", async (job, result) => {
     console.log(`[PROCESSING WORKER] ✓ Job COMPLETED: name=${job.name} id=${job.id} result=${JSON.stringify(result)}`);
     // Mark evidence as COMPLETED in DB
     const { evidenceId } = job.data;
-    await db.evidence.update({
-        where: { id: evidenceId },
-        data: { status: "COMPLETED" },
-    }).catch((err) => console.error("[PROCESSING WORKER] Failed to mark evidence COMPLETED:", err));
+    if (evidenceId) {
+        try {
+            const evidence = await db.evidence.findUnique({ where: { id: evidenceId } });
+            if (evidence) {
+                await db.evidence.update({
+                    where: { id: evidenceId },
+                    data: { status: "COMPLETED" },
+                });
+            } else {
+                console.warn(`[PROCESSING WORKER] Evidence ${evidenceId} not found in DB, skipping status update`);
+            }
+        } catch (err) {
+            console.error("[PROCESSING WORKER] Failed to mark evidence COMPLETED:", (err as Error).message);
+        }
+    }
 });
 
 worker.on("failed", async (job, error) => {
     if (!job) return;
 
-    console.error(`[PROCESSING WORKER] ✗ Job FAILED: name=${job.name} id=${job.id} attempt=${job.attemptsMade} error=${error.message}`, error.stack);
+    console.error(`[PROCESSING WORKER] ✗ Job FAILED: name=${job.name} id=${job.id} attempt=${job.attemptsMade} error=${error.message}`);
 
-    // Mark evidence as FAILED in DB
+    // Mark evidence as FAILED in DB (only if evidence exists)
     const { evidenceId } = job.data;
-    await db.evidence.update({
-        where: { id: evidenceId },
-        data: { status: "FAILED" },
-    }).catch((err) => console.error("[PROCESSING WORKER] Failed to mark evidence FAILED:", err));
+    if (evidenceId) {
+        try {
+            const evidence = await db.evidence.findUnique({ where: { id: evidenceId } });
+            if (evidence) {
+                await db.evidence.update({
+                    where: { id: evidenceId },
+                    data: { status: "FAILED" },
+                });
+            } else {
+                console.warn(`[PROCESSING WORKER] Evidence ${evidenceId} not found in DB, skipping status update`);
+            }
+        } catch (err) {
+            console.error("[PROCESSING WORKER] Failed to mark evidence FAILED:", (err as Error).message);
+        }
+    }
 
     // Send to dead letter queue after exhausting all retries
     if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
         console.error(`[PROCESSING WORKER] ✗ Job exhausted all retries — sending to dead letter queue`);
-        await EvidenceQueueService.sendToDeadLetter({
-            originalQueue: QUEUE_NAMES.PROCESSING,
-            originalJobName: job.name,
-            originalPayload: job.data,
-            attempts: job.attemptsMade,
-            failedAt: new Date(),
-            failureReason: error.message,
-        });
+        try {
+            await EvidenceQueueService.sendToDeadLetter({
+                originalQueue: QUEUE_NAMES.PROCESSING,
+                originalJobName: job.name,
+                originalPayload: job.data,
+                attempts: job.attemptsMade,
+                failedAt: new Date(),
+                failureReason: error.message,
+            });
+        } catch (dlqErr) {
+            console.error("[PROCESSING WORKER] Failed to send to dead letter queue:", (dlqErr as Error).message);
+        }
     }
 });
 

@@ -373,6 +373,7 @@ export default function EvidenceWorkspacePage() {
                     placeholder="ASK ABOUT EVIDENCE..."
                     selectedItemName={selected?.fileName}
                     contextType="Evidence Ingestion Pipeline"
+                    caseId={caseId}
                     isCollapsed={isRightCollapsed}
                     onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
                 />

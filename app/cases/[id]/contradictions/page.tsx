@@ -258,6 +258,7 @@ export default function ContradictionsWorkspacePage() {
                     placeholder="ASK ABOUT CONTRADICTIONS..."
                     selectedItemName={selected?.title}
                     contextType="Factual Contradiction Analyzer"
+                    caseId={caseId}
                     isCollapsed={isRightCollapsed}
                     onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
                 />

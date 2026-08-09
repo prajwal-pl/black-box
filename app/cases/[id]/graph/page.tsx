@@ -131,6 +131,7 @@ export default function GraphWorkspacePage() {
     const [edges, setEdges] = useState<GraphEdge[]>([]);
     const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
     const [selectedConns, setSelectedConns] = useState<GraphEdge[]>([]);
+    const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
     const [inspectorTab, setInspectorTab] = useState<"node" | "ai">("node");
     const [isRightCollapsed, setIsRightCollapsed] = useState(false);
     const [rightWidth, setRightWidth] = useState(320);
@@ -249,11 +250,36 @@ export default function GraphWorkspacePage() {
             setSelectedConns(connEdges);
         });
 
+        // Tap on edge → select edge for AI explanation
+        cy.on("tap", "edge", (evt: EventObject) => {
+            const edge = evt.target;
+            const edgeData = edge.data();
+            const fromNode = nodes.find(n => n.id === edgeData.source);
+            const toNode = nodes.find(n => n.id === edgeData.target);
+            if (fromNode && toNode) {
+                const graphEdge: GraphEdge = {
+                    from: fromNode.id,
+                    to: toNode.id,
+                    type: edgeData.type,
+                    confidence: edgeData.confidence,
+                };
+                setSelectedEdge(graphEdge);
+                setSelectedNode(null);
+                setSelectedConns([]);
+                // Also highlight the edge visually
+                cy.elements().removeClass("dimmed highlighted");
+                edge.addClass("highlighted");
+                cy.getElementById(edgeData.source).addClass("highlighted");
+                cy.getElementById(edgeData.target).addClass("highlighted");
+            }
+        });
+        
         // Tap on background → deselect
         cy.on("tap", (evt: EventObject) => {
             if (evt.target === cy) {
                 cy.elements().removeClass("dimmed highlighted");
                 setSelectedNode(null);
+                setSelectedEdge(null);
                 setSelectedConns([]);
             }
         });
@@ -491,7 +517,13 @@ export default function GraphWorkspacePage() {
                                     suggestions={["Explain this relationship", "Find suspicious links", "Summarize entity", "Who is connected?", "Find hidden patterns"]}
                                     placeholder="ASK ABOUT GRAPH..."
                                     selectedItemName={selectedNode?.name}
+                                    selectedEdge={selectedEdge ? {
+                                        ...selectedEdge,
+                                        fromName: nodes.find(n => n.id === selectedEdge.from)?.name,
+                                        toName: nodes.find(n => n.id === selectedEdge.to)?.name,
+                                    } : null}
                                     contextType="Entity Topology Resolver"
+                                    caseId={caseId}
                                     isCollapsed={false}
                                     onToggleCollapse={() => setIsRightCollapsed(true)}
                                 />

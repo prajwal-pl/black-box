@@ -1,11 +1,12 @@
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { ChatGroq } from "@langchain/groq"
-import { ChatFireworks } from "@langchain/fireworks"
+import { ChatFireworks } from "@langchain/fireworks";
 import type { Job } from "bullmq";
 import z from "zod/v4";
 import { JOB_NAMES, JOB_PRIORITY, type ExtractEntitiesPayload } from "../jobs/types";
 import { StorageService } from "../../services/storage.service";
 import { graphQueue } from "../definitions/graph.queue";
+import { getDriver } from "../../lib/graph-driver";
+import db from "../../lib/db";
 
 const ExtractionSchema = z.object({
     entities: z.array(z.object({
@@ -47,6 +48,49 @@ function getModel() {
     return _model;
 }
 
+async function fetchCaseContext(caseId: string): Promise<{ entities: string; hypotheses: string }> {
+    const driver = getDriver();
+    const session = driver.session();
+
+    let existingEntities = "None yet";
+    let existingHypotheses = "None yet";
+
+    try {
+        // Fetch existing entities from Neo4j
+        const entityResult = await session.run(
+            `MATCH (e:Entity {caseId: $caseId})
+             RETURN e.id as id, e.type as type, e.name as name, e.aliases as aliases
+             LIMIT 50`,
+            { caseId }
+        );
+
+        if (entityResult.records.length > 0) {
+            existingEntities = entityResult.records.map(r => 
+                `- ${r.get("name")} (${r.get("type")}) [id: ${r.get("id")}]`
+            ).join("\n");
+        }
+
+        // Fetch existing hypotheses from PostgreSQL
+        const hypotheses = await db.hypothesis.findMany({
+            where: { caseId },
+            orderBy: { confidence: "desc" },
+            take: 10
+        });
+
+        if (hypotheses.length > 0) {
+            existingHypotheses = hypotheses.map(h => 
+                `- ${h.content} (confidence: ${h.confidence})`
+            ).join("\n");
+        }
+    } catch (err) {
+        console.warn(`[EXTRACTION] ⚠ Failed to fetch case context for caseId=${caseId}:`, (err as Error).message);
+    } finally {
+        await session.close();
+    }
+
+    return { entities: existingEntities, hypotheses: existingHypotheses };
+}
+
 function buildExtractionChain() {
     const prompt = ChatPromptTemplate.fromMessages([
         [
@@ -56,9 +100,20 @@ Rules:
 - Only extract what is EXPLICITLY stated. Do not infer or assume.
 - Generate a new UUID for each entity id.
 - If a date is mentioned but not precise, use your best ISO8601 approximation.
-- Confidence scores reflect how certain you are based on the text alone.`,
+- Confidence scores reflect how certain you are based on the text alone.
+- REUSE existing entity IDs when the same entity is mentioned — do not create duplicates.
+- Use the existing hypotheses as investigative context to focus extraction.`,
         ],
-        ["human", "{text}"],
+        ["human", `Evidence text to analyze:
+{text}
+
+Existing entities in this case (reuse these IDs if the same entity appears):
+{entities}
+
+Existing hypotheses in this case (context for focused extraction):
+{hypotheses}
+
+Extract entities, relationships, and events from the evidence text above.`],
     ]);
     return prompt.pipe(getModel().withStructuredOutput(ExtractionSchema));
 }
@@ -79,12 +134,37 @@ export class ExtractionProcessor {
         await job.updateProgress(10);
         console.log(`[EXTRACTION] Downloading normalized text from: ${normalizedTextKey}`);
         const buffer = await StorageService.download(normalizedTextKey);
-        const text = buffer.toString("utf-8");
-        console.log(`[EXTRACTION] Downloaded normalized text: ${text.length} chars`);
-        console.log(`[EXTRACTION] First 500 chars of text: "${text.substring(0, 500)}"`);
-        if (text.length < 100) {
-            console.warn(`[EXTRACTION] ⚠ WARNING: normalized text is very short (${text.length} chars) — PDF may be scanned/image-based or empty`);
+        let text = buffer.toString("utf-8");
+        text = text.replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]/g, " ");
+        
+        console.log(`[EXTRACTION] Downloaded and sanitized text: ${text.length} chars`);
+        console.log(`[EXTRACTION] First 300 chars of text: "${text.substring(0, 300)}"`);
+        
+        const extractionKey = `cases/${caseId}/extraction/${evidenceId}.json`;
+
+        if (text.trim().length < 100) {
+            console.warn(`[EXTRACTION] ⚠ WARNING: normalized text is very short (${text.length} chars). Skipping LLM.`);
+            const emptyExtraction = { entities: [], relationships: [], events: [] };
+            await StorageService.upload(extractionKey, Buffer.from(JSON.stringify(emptyExtraction, null, 2)), "application/json");
+            
+            console.log(`[EXTRACTION] Enqueuing UPDATE_GRAPH job with empty extraction...`);
+            await graphQueue.add(JOB_NAMES.UPDATE_GRAPH, {
+                evidenceId,
+                caseId,
+                extractionResultKey: extractionKey,
+                processorVersion: "1.0",
+                extractionVersion: "1.0"
+            }, { priority: JOB_PRIORITY.GRAPH_UPDATE });
+            
+            return { evidenceId, extractionKey, entityCount: 0 };
         }
+
+        // Fetch case context (existing entities & hypotheses) for the LLM
+        await job.updateProgress(15);
+        console.log(`[EXTRACTION] Fetching case context (entities, hypotheses) for caseId=${caseId}...`);
+        const { entities: existingEntities, hypotheses: existingHypotheses } = await fetchCaseContext(caseId);
+        console.log(`[EXTRACTION] Existing entities: ${existingEntities === "None yet" ? 0 : existingEntities.split("\n").length}`);
+        console.log(`[EXTRACTION] Existing hypotheses: ${existingHypotheses === "None yet" ? 0 : existingHypotheses.split("\n").length}`);
 
         // Truncate very long texts to avoid LLM context window overflow.
         // ~16000 chars ≈ 4000 tokens, well within model limits.
@@ -96,10 +176,14 @@ export class ExtractionProcessor {
         }
 
         await job.updateProgress(30);
-        console.log(`[EXTRACTION] Calling LLM for entity/relationship/event extraction (sending ${textForLLM.length} chars)...`);
+        console.log(`[EXTRACTION] Calling LLM for entity/relationship/event extraction (sending ${textForLLM.length} chars + context)...`);
         let extraction;
         try {
-            extraction = await getExtractionChain().invoke({ text: textForLLM });
+            extraction = await getExtractionChain().invoke({ 
+                text: textForLLM,
+                entities: existingEntities,
+                hypotheses: existingHypotheses
+            });
         } catch (err) {
             console.error(`[EXTRACTION] ✗ LLM call FAILED for evidenceId=${evidenceId}:`, err);
             throw err;
@@ -109,7 +193,6 @@ export class ExtractionProcessor {
         console.log(`[EXTRACTION] Events:`, JSON.stringify(extraction.events.map(e => ({ title: e.title, occurredAt: e.occurredAt }))));
 
         await job.updateProgress(80);
-        const extractionKey = `cases/${caseId}/extraction/${evidenceId}.json`;
         console.log(`[EXTRACTION] Uploading extraction result to: ${extractionKey}`);
         await StorageService.upload(extractionKey, Buffer.from(JSON.stringify(extraction, null, 2)), "application/json");
         console.log(`[EXTRACTION] Extraction JSON uploaded`);

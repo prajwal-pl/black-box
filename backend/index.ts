@@ -9,6 +9,7 @@ import hypothesisRoutes from "./routes/hypothesis";
 import timelineRoutes from "./routes/timeline";
 import reasoningRoutes from "./routes/reasoning";
 import graphRoutes from "./routes/graph";
+import aiRoutes from "./routes/ai";
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use("/", hypothesisRoutes);
 app.use("/", timelineRoutes);
 app.use("/", reasoningRoutes);
 app.use("/", graphRoutes);
+app.use("/ai", aiRoutes);
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);

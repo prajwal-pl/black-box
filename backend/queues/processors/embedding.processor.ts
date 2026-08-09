@@ -45,7 +45,11 @@ export class EmbeddingProcessor {
             const buffer = await StorageService.download(key)
             const text = buffer.toString("utf-8");
             console.log(`[EMBEDDING] Downloaded chunk: ${text.length} chars`);
-            rawTexts.push(text)
+            if (text.trim().length > 50) {
+                rawTexts.push(text)
+            } else {
+                console.warn(`[EMBEDDING] ⚠ Skipping empty/short chunk from ${key}`);
+            }
         }
 
         await job.updateProgress(30);
@@ -56,26 +60,31 @@ export class EmbeddingProcessor {
         }))
 
         console.log(`[EMBEDDING] Splitting ${docs.length} docs into chunks...`);
-        const splits = await splitter.splitDocuments(docs)
-        console.log(`[EMBEDDING] Split into ${splits.length} chunks`);
+        let splits = await splitter.splitDocuments(docs)
+        splits = splits.filter(doc => doc.pageContent.trim().length >= 20)
+        console.log(`[EMBEDDING] Split into ${splits.length} valid chunks`);
         await job.updateProgress(50);
 
-        console.log(`[EMBEDDING] Getting vector store...`);
-        let vectorStore;
-        try {
-            vectorStore = await getVectorStore();
-        } catch (err) {
-            console.error(`[EMBEDDING] ✗ Failed to connect to Qdrant:`, err);
-            throw err;
-        }
+        if (splits.length > 0) {
+            console.log(`[EMBEDDING] Getting vector store...`);
+            let vectorStore;
+            try {
+                vectorStore = await getVectorStore();
+            } catch (err) {
+                console.error(`[EMBEDDING] ✗ Failed to connect to Qdrant:`, err);
+                throw err;
+            }
 
-        console.log(`[EMBEDDING] Adding ${splits.length} chunks to Qdrant...`);
-        try {
-            await vectorStore.addDocuments(splits)
-            console.log(`[EMBEDDING] ✓ ${splits.length} chunks added to Qdrant`);
-        } catch (err) {
-            console.error(`[EMBEDDING] ✗ Qdrant addDocuments FAILED:`, err);
-            throw err;
+            console.log(`[EMBEDDING] Adding ${splits.length} chunks to Qdrant...`);
+            try {
+                await vectorStore.addDocuments(splits)
+                console.log(`[EMBEDDING] ✓ ${splits.length} chunks added to Qdrant`);
+            } catch (err) {
+                console.error(`[EMBEDDING] ✗ Qdrant addDocuments FAILED:`, err);
+                throw err;
+            }
+        } else {
+            console.warn(`[EMBEDDING] ⚠ No valid chunks after splitting, skipping Qdrant insertion`);
         }
 
         await job.updateProgress(80);

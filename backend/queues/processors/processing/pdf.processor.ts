@@ -3,63 +3,117 @@ import { JOB_NAMES, JOB_PRIORITY, type ProcessEvidencePayload } from "../../jobs
 import { StorageService } from "../../../services/storage.service";
 import { PDFParse } from "pdf-parse";
 import { graphQueue } from "../../definitions/graph.queue";
-import Tesseract from "tesseract.js";
-import { CanvasRenderingContext2D, createCanvas } from "canvas";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-
-// Disable the browser-style Worker — pdfjs runs in the main thread in Node.js/Bun.
-// This must be set before any getDocument() call.
-pdfjs.GlobalWorkerOptions.workerSrc = "";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { spawn } from "child_process";
 
 // Absolute path to the backend root where eng.traineddata lives.
-// Computed once at module load so Tesseract.js can find the language data.
-const TESSERACT_LANG_PATH = new URL("../../..", import.meta.url).pathname;
+const TESSERACT_LANG_PATH = String(new URL("../../..", import.meta.url).pathname).replace(/\/$/, "");
+const OCR_WORKER_PATH = new URL("./ocr-worker.ts", import.meta.url).pathname;
 
 // Minimum char threshold below which we consider pdf-parse output insufficient.
-// Scanned PDFs typically yield only page-number headers (~527 chars for 30 pages).
-const MIN_TEXT_LENGTH_THRESHOLD = 800;
+const MIN_TEXT_LENGTH_THRESHOLD = 2000;
+const MIN_MEANINGFUL_CHARS_RATIO = 0.3;
 
-// Render each PDF page to a PNG buffer at the given scale and OCR it.
-async function ocrPdfBuffer(buffer: Buffer): Promise<string> {
-    console.log(`[PDF:OCR] Loading PDF with pdfjs for page rendering...`);
-    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
-    const pdf = await loadingTask.promise;
-    console.log(`[PDF:OCR] PDF loaded — ${pdf.numPages} pages`);
-
-    const textParts: string[] = [];
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        console.log(`[PDF:OCR] Rendering page ${pageNum}/${pdf.numPages}...`);
-        const page = await pdf.getPage(pageNum);
-        // Scale 2.0 gives ~144 DPI — good balance for OCR accuracy vs. speed
-        const viewport = page.getViewport({ scale: 2.0 });
-
-        const canvas = createCanvas(viewport.width, viewport.height);
-        const context = canvas.getContext("2d");
-
-        await page.render({
-            canvas: canvas as unknown as HTMLCanvasElement,
-            canvasContext: context as unknown as CanvasRenderingContext2D,
-            viewport,
-        }).promise;
-
-        const pngBuffer = canvas.toBuffer("image/png");
-        console.log(`[PDF:OCR] Page ${pageNum} rendered (${pngBuffer.byteLength} bytes), running Tesseract...`);
-
-        const { data: { text } } = await Tesseract.recognize(pngBuffer, "eng", {
-            langPath: TESSERACT_LANG_PATH,
+function runCommand(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+        const proc = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        let stderr = "";
+        proc.stdout.on("data", (data) => { stdout += data.toString(); });
+        proc.stderr.on("data", (data) => { stderr += data.toString(); });
+        proc.on("close", (code) => {
+            if (code === 0) resolve({ stdout, stderr });
+            else reject(new Error(`${command} exited with code ${code}: ${stderr}`));
         });
-        const trimmed = text.trim();
-        console.log(`[PDF:OCR] Page ${pageNum} OCR: ${trimmed.length} chars`);
-        if (trimmed.length > 0) {
-            textParts.push(trimmed);
+        proc.on("error", reject);
+    });
+}
+
+async function ocrPdfWithPoppler(buffer: Buffer): Promise<string> {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdf-ocr-"));
+    const inputPath = path.join(tempDir, "input.pdf");
+    
+    console.log(`[PDF:OCR] Using system pdftoppm for PDF-to-image conversion...`);
+    console.log(`[PDF:OCR] Tesseract lang path: ${TESSERACT_LANG_PATH}`);
+    console.log(`[PDF:OCR] Temp dir: ${tempDir}`);
+
+    try {
+        fs.writeFileSync(inputPath, buffer);
+        
+        // Convert PDF to PNG images using system pdftoppm
+        // -r 144 = 144 DPI
+        // -png = output format
+        await runCommand("pdftoppm", ["-png", "-r", "144", inputPath, path.join(tempDir, "page")]);
+
+        // Find all generated PNG files
+        const files = fs.readdirSync(tempDir)
+            .filter(f => f.startsWith("page") && f.endsWith(".png"))
+            .sort((a, b) => {
+                const numA = parseInt(a.replace("page-", "").replace(".png", ""), 10);
+                const numB = parseInt(b.replace("page-", "").replace(".png", ""), 10);
+                return numA - numB;
+            });
+
+        console.log(`[PDF:OCR] Generated ${files.length} page images`);
+
+        const textParts: string[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const pageNum = i + 1;
+            const fileName = files[i];
+            if (!fileName) continue;
+            const pngPath = path.join(tempDir, fileName);
+            const pngBuffer = fs.readFileSync(pngPath);
+            
+            console.log(`[PDF:OCR] Page ${pageNum}/${files.length} (${pngBuffer.byteLength} bytes), running Tesseract in isolated process...`);
+
+            try {
+                const result = await runCommand("bun", [OCR_WORKER_PATH, pngPath], {
+                    env: { ...process.env, TESSERACT_LANG_PATH },
+                });
+                const trimmed = result.stdout.trim();
+                console.log(`[PDF:OCR] Page ${pageNum} OCR: ${trimmed.length} chars`);
+                if (trimmed.length > 0) {
+                    textParts.push(trimmed);
+                }
+            } catch (pageErr) {
+                console.error(`[PDF:OCR] Page ${pageNum} OCR FAILED, continuing:`, (pageErr as Error).message);
+                // Continue with other pages instead of crashing the whole job
+            }
         }
 
-        page.cleanup();
+        return textParts.join("\n\n");
+    } finally {
+        // Cleanup temp files
+        try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch {}
     }
+}
 
-    await pdf.cleanup();
-    return textParts.join("\n\n");
+function isTextMeaningful(text: string): boolean {
+    if (text.length === 0) return false;
+    
+    const alnumChars = (text.match(/[a-zA-Z0-9]/g) || []).length;
+    const alnumRatio = alnumChars / text.length;
+    
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let pageNumberLines = 0;
+    for (const line of lines) {
+        if (/^[-–—\s]*\d+\s*(of|\/)\s*\d+[-–—\s]*$/i.test(line) || 
+            /^page\s+\d+\s*(of|\/)\s*\d+/i.test(line)) {
+            pageNumberLines++;
+        }
+    }
+    const pageNumberRatio = pageNumberLines / Math.max(lines.length, 1);
+    
+    const isMeaningful = alnumRatio >= MIN_MEANINGFUL_CHARS_RATIO && pageNumberRatio < 0.5;
+    
+    console.log(`[PDF] Quality details: alnumRatio=${alnumRatio.toFixed(2)}, pageNumberRatio=${pageNumberRatio.toFixed(2)}, lines=${lines.length}, pageNumLines=${pageNumberLines}, meaningful=${isMeaningful}`);
+    
+    return isMeaningful;
 }
 
 export class PdfProcessor {
@@ -78,7 +132,6 @@ export class PdfProcessor {
         let text = "";
         let pageCount = 0;
         try {
-            // pdf-parse v2: constructor takes options object with `data` field
             const parser = new PDFParse({ data: buffer });
             const result = await parser.getText();
             text = result.text?.trim() ?? "";
@@ -90,18 +143,16 @@ export class PdfProcessor {
             text = "";
         }
 
-        // If pdf-parse yielded too little text, the PDF is scanned/image-based.
-        // Render each page with pdfjs → PNG → Tesseract OCR.
-        if (text.length < MIN_TEXT_LENGTH_THRESHOLD) {
-            console.warn(`[PDF] ⚠ pdf-parse yielded only ${text.length} chars (threshold=${MIN_TEXT_LENGTH_THRESHOLD}) — falling back to page-by-page Tesseract OCR via pdfjs renderer`);
+        const meaningful = isTextMeaningful(text);
+        console.log(`[PDF] Quality check: length=${text.length}, meaningful=${meaningful}, alnumRatio=${((text.match(/[a-zA-Z0-9]/g) || []).length / (text.length || 1)).toFixed(2)}`);
+        if (text.length < MIN_TEXT_LENGTH_THRESHOLD || !meaningful) {
+            console.warn(`[PDF] ⚠ pdf-parse yielded ${text.length} chars (threshold=${MIN_TEXT_LENGTH_THRESHOLD}), meaningful=${meaningful} — falling back to page-by-page Tesseract OCR via pdftoppm`);
             await job.updateProgress(30);
             try {
-                text = await ocrPdfBuffer(buffer);
+                text = await ocrPdfWithPoppler(buffer);
                 console.log(`[PDF] Page-by-page OCR complete: ${text.length} chars extracted`);
                 console.log(`[PDF] First 300 chars of OCR text: "${text.substring(0, 300)}"`);
             } catch (ocrErr) {
-                // OCR failed (e.g. pdfjs drawImage incompatibility with certain PDFs).
-                // Log and fall through — the job will complete using the pdf-parse output.
                 console.error(`[PDF] ⚠ Page-by-page OCR failed, continuing with pdf-parse output:`, (ocrErr as Error).message);
             }
         }

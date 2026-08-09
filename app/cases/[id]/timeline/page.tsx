@@ -209,6 +209,7 @@ export default function TimelineWorkspacePage() {
                     placeholder="ASK ABOUT TIMELINE..."
                     selectedItemName={selected?.title}
                     contextType="Chronological Event Reconstructor"
+                    caseId={caseId}
                     isCollapsed={isRightCollapsed}
                     onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
                 />

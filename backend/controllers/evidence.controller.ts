@@ -98,3 +98,14 @@ export const deleteEvidence: RequestHandler = async (req, res) => {
         res.status(500).json({ error: "Failed to delete evidence" });
     }
 }
+
+export const reprocessEvidence: RequestHandler = async (req, res) => {
+    try {
+        const { id } = req.params as { id: string };
+        const job = await EvidenceQueueService.requeueEvidenceProcessing(id);
+        res.json({ message: "Evidence requeued for processing", jobId: job.id });
+    } catch (error) {
+        console.error("Failed to requeue evidence:", error);
+        res.status(500).json({ error: (error as Error).message });
+    }
+}
