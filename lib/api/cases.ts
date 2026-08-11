@@ -38,4 +38,21 @@ export const casesApi = {
         });
         return response.case;
     },
+
+    update: async (
+        id: string,
+        data: Partial<Pick<Case, "name" | "status" | "severity">>
+    ): Promise<Case> => {
+        const response = await apiClient<CaseResponse>(`/cases/${id}`, {
+            method: "PUT",
+            body: JSON.stringify(data),
+        });
+        return response.case;
+    },
+
+    deleteCase: async (id: string): Promise<{ message: string }> => {
+        return apiClient<{ message: string }>(`/cases/${id}`, {
+            method: "DELETE",
+        });
+    },
 };

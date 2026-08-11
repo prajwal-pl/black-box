@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Preloader } from "@/components/landing/preloader";
 import { SmoothScrollProvider } from "@/components/landing/smooth-scroll";
+import { Hero } from "@/components/landing/hero";
 import { CinematicBriefing } from "@/components/landing/cinematic-briefing";
 import { FlashlightDecoder } from "@/components/landing/flashlight-decoder";
 import { SignalDemodulator } from "@/components/landing/signal-demodulator";
@@ -19,6 +20,9 @@ export default function Home() {
       {isPreloaded && (
         <SmoothScrollProvider>
           <main className="w-full min-h-screen bg-black select-none">
+            {/* Initial Hero Section */}
+            <Hero />
+            
             {/* Act I - IV: Cinematic Video Briefing */}
             <CinematicBriefing />
             

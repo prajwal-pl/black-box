@@ -1,10 +1,12 @@
 "use client"
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { casesApi, Case } from "@/lib/api/cases";
 import { evidenceApi } from "@/lib/api/evidence";
+import CaseSettingsModal from "@/components/case/case-settings-modal";
 import {
     ArrowLeft, Layers, GitFork, Clock, BrainCircuit,
     ShieldAlert, Lock, FileText, Settings, Activity,
@@ -29,6 +31,7 @@ interface LeftCaseSidebarProps {
 export default function LeftCaseSidebar({ caseId, isCollapsed, onToggleCollapse }: LeftCaseSidebarProps) {
     const pathname = usePathname();
     const base = `/cases/${caseId}`;
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const { data: caseData, isLoading } = useQuery<Case>({
         queryKey: ["case", caseId],
@@ -177,6 +180,7 @@ export default function LeftCaseSidebar({ caseId, isCollapsed, onToggleCollapse 
             <div className="p-1.5 shrink-0 space-y-1 bg-zinc-950/40">
                 <button
                     title="CASE SETTINGS"
+                    onClick={() => setIsSettingsOpen(true)}
                     className={`flex items-center font-mono text-[10px] tracking-widest text-zinc-400 hover:text-white transition-colors uppercase font-bold py-2 ${
                         isCollapsed ? "justify-center px-1" : "px-3 gap-3"
                     } w-full`}
@@ -193,6 +197,15 @@ export default function LeftCaseSidebar({ caseId, isCollapsed, onToggleCollapse 
                     {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                 </button>
             </div>
+
+            {/* Case Settings Modal */}
+            {caseData && (
+                <CaseSettingsModal
+                    caseData={caseData}
+                    isOpen={isSettingsOpen}
+                    onClose={() => setIsSettingsOpen(false)}
+                />
+            )}
         </div>
     );
 }
