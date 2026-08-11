@@ -12,9 +12,20 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
+import {
+    AlertDialog,
+    AlertDialogTrigger,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogAction,
+    AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Upload, FileText, Trash2, AlertTriangle, CheckCircle,
+    Upload, FileText, Trash2, CheckCircle,
     Clock, RefreshCw, X, Loader2, Activity,
 } from "lucide-react";
 import CaseAIPanel from "@/components/case/case-ai-panel";
@@ -50,6 +61,7 @@ export default function EvidenceWorkspacePage() {
     const [isRightCollapsed, setIsRightCollapsed] = useState(false);
     const [rightWidth, setRightWidth] = useState(320);
     const [isResizingRight, setIsResizingRight] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<Evidence | null>(null);
 
     const startResizing = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -311,21 +323,47 @@ export default function EvidenceWorkspacePage() {
                                                 }`}>
                                                     {e.status}
                                                 </span>
-                                                <button
-                                                    onClick={ev => { 
-                                                        ev.stopPropagation(); 
-                                                        if (confirm("Delete this evidence source?")) deleteMutation.mutate(e.id); 
-                                                    }}
-                                                    disabled={deleteMutation.isPending && deleteMutation.variables === e.id}
-                                                    className="p-1 text-zinc-500 hover:text-white transition-colors disabled:opacity-40"
-                                                    title="Delete evidence"
-                                                >
-                                                    {deleteMutation.isPending && deleteMutation.variables === e.id ? (
-                                                        <Loader2 size={12} className="animate-spin" />
-                                                    ) : (
-                                                        <Trash2 size={12} />
-                                                    )}
-                                                </button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <button
+                                                            onClick={ev => { 
+                                                                ev.stopPropagation(); 
+                                                                setDeleteTarget(e);
+                                                            }}
+                                                            disabled={deleteMutation.isPending && deleteMutation.variables === e.id}
+                                                            className="p-1 text-zinc-500 hover:text-white transition-colors disabled:opacity-40"
+                                                            title="Delete evidence"
+                                                        >
+                                                            {deleteMutation.isPending && deleteMutation.variables === e.id ? (
+                                                                <Loader2 size={12} className="animate-spin" />
+                                                            ) : (
+                                                                <Trash2 size={12} />
+                                                            )}
+                                                        </button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Delete Evidence</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                Are you sure you want to delete "{deleteTarget?.fileName ?? "this evidence"}"? This action cannot be undone.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                onClick={() => {
+                                                                    if (deleteTarget) {
+                                                                        deleteMutation.mutate(deleteTarget.id);
+                                                                    }
+                                                                    setDeleteTarget(null);
+                                                                }}
+                                                                variant="destructive"
+                                                            >
+                                                                Delete
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </div>
                                         </div>
                                     );
