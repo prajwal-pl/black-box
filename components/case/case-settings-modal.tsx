@@ -9,6 +9,7 @@ import {
     Loader2, ChevronDown, Trash2, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 /* ─────────────────────────────────────────── types */
 type Tab = "general" | "danger";
@@ -138,18 +139,24 @@ export default function CaseSettingsModal({ caseData, isOpen, onClose }: Props) 
         onSuccess: (updated) => {
             queryClient.setQueryData(["case", caseData.id], updated);
             queryClient.invalidateQueries({ queryKey: ["cases"] });
+            toast.success("Case settings updated");
             onClose();
         },
+        onError: (err: any) => {
+            toast.error(err?.message || "Failed to update case");
+        }
     });
 
     const deleteMutation = useMutation({
         mutationFn: () => casesApi.deleteCase(caseData.id),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["cases"] });
+            toast.success("Case deleted");
             router.push("/dashboard");
         },
-        onError: () => {
+        onError: (err: any) => {
             setDeleteError("Failed to delete case. Please try again.");
+            toast.error(err?.message || "Failed to delete case");
         },
     });
 

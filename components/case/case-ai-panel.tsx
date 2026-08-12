@@ -3,6 +3,18 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, ChevronLeft, ChevronRight, Square, Sparkles, Plus, Trash2, MessageSquare } from "lucide-react";
 import { useAIConversations, type AIMessage } from "@/hooks/use-ai-conversations";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 // ─── Local alias so the rest of the file reads the same as before ─────────────
 type Message = AIMessage;
@@ -440,11 +452,12 @@ export default function CaseAIPanel({
         newConversation();
     };
 
-    const handleDeleteConversation = () => {
+    const handleDeleteConversation = (id?: string) => {
         abortRef.current?.abort();
         setIsLoading(false);
         setInput("");
-        deleteConversation();
+        deleteConversation(id);
+        toast.success("Conversation deleted");
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -508,13 +521,33 @@ export default function CaseAIPanel({
                     </button>
 
                     {/* Delete conversation */}
-                    <button
-                        onClick={handleDeleteConversation}
-                        title="Delete this conversation"
-                        className="p-1 text-zinc-600 hover:text-red-400 transition-colors"
-                    >
-                        <Trash2 size={11} />
-                    </button>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <button
+                                title="Delete this conversation"
+                                className="p-1 text-zinc-600 hover:text-red-400 transition-colors"
+                            >
+                                <Trash2 size={11} />
+                            </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Are you sure you want to delete this conversation? This action cannot be undone.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={() => handleDeleteConversation()}
+                                    className="bg-red-900 text-white hover:bg-red-800"
+                                >
+                                    Delete
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 </div>
             </div>
 
@@ -587,16 +620,34 @@ export default function CaseAIPanel({
                                 {conv.messageCount} MSG{conv.messageCount !== 1 ? "S" : ""}
                             </span>
                             {idx !== activeConvIndex && (
-                                <button
-                                    onClick={e => {
-                                        e.stopPropagation();
-                                        deleteConversation(conv.id);
-                                    }}
-                                    title="Delete"
-                                    className="p-0.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                                >
-                                    <Trash2 size={8} />
-                                </button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <button
+                                            title="Delete"
+                                            className="p-0.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            <Trash2 size={8} />
+                                        </button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Are you sure you want to delete this conversation? This action cannot be undone.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                onClick={() => handleDeleteConversation(conv.id)}
+                                                className="bg-red-900 text-white hover:bg-red-800"
+                                            >
+                                                Delete
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             )}
                         </div>
                     ))}

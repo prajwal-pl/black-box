@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/themes/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClientProvider } from "@/components/providers/client-provider";
+import { Toaster } from "@/components/ui/sonner";
 
 const displayFont = Saira_Condensed({
   subsets: ["latin"],
@@ -59,6 +60,7 @@ export default function RootLayout({
             </TooltipProvider>
           </ClientProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );
