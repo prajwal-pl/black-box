@@ -1,12 +1,23 @@
-import Redis, { type RedisOptions } from "ioredis";
+import Redis from "ioredis";
 
-export const redisConfig: RedisOptions = {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD,
-    db: parseInt(process.env.REDIS_DB || '0'),
-    maxRetriesPerRequest: null, // Disable max retries per request
-    enableReadyCheck: true, // Enable ready check to ensure the connection is established
-}
+/**
+ * Creates a BullMQ-compatible Redis connection.
+ *
+ * In production (Upstash), set REDIS_URL to a rediss:// URL for TLS.
+ * In local dev, set REDIS_URL to redis://localhost:6379 or leave unset
+ * to fall back to the local default.
+ *
+ * BullMQ requirements:
+ *   - maxRetriesPerRequest: null  (must be null, not a number)
+ *   - enableReadyCheck: false     (Upstash doesn't support the READY check command)
+ */
+export const createRedisConnection = () => {
+    const url = process.env.REDIS_URL || "redis://localhost:6379";
+    const isTLS = url.startsWith("rediss://");
 
-export const createRedisConnection = () => new Redis(redisConfig);
+    return new Redis(url, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+        ...(isTLS ? { tls: {} } : {}),
+    });
+};

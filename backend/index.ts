@@ -17,8 +17,23 @@ const port = process.env.PORT || 3001;
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.CORS_ORIGIN,
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json());
+
+// Health check — used by Docker HEALTHCHECK and load balancers
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 app.use("/auth", authRoutes);
 app.use("/cases", casesRoutes);

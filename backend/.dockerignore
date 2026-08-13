@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Prisma generated client (regenerated during build)
+generated/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*.test.ts
+test.ts
+seed.ts
+
+# Large binary assets not needed in container
+eng.traineddata

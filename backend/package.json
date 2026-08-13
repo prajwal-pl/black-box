@@ -3,6 +3,16 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch index.ts",
+    "build": "bun --bun run prisma generate",
+    "workers": "bun run workers/all-workers.ts",
+    "worker:ingestion": "bun run workers/ingestion.worker.ts",
+    "worker:processing": "bun run workers/processing.worker.ts",
+    "worker:reasoning": "bun run workers/reasoning.worker.ts",
+    "worker:graph": "bun run workers/graph.worker.ts"
+  },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/bun": "latest",
