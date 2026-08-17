@@ -1,18 +1,17 @@
-import type { Job } from "bullmq";
-import { JOB_NAMES, JOB_PRIORITY, type ProcessEvidencePayload } from "../../jobs/types";
+import type { ProcessEvidencePayload } from "../../../types/task-payloads";
 import { StorageService } from "../../../services/storage.service";
-import { graphQueue } from "../../definitions/graph.queue";
 
 export class EmailProcessor {
-    static async handle(job: Job<ProcessEvidencePayload>) {
-        const { caseId, evidenceId, storageKey } = job.data;
+    static async handle(
+        payload: ProcessEvidencePayload,
+    ): Promise<{ evidenceId: string; caseId: string; normalizedTextKey: string }> {
+        const { caseId, evidenceId, storageKey } = payload;
 
-        await job.updateProgress(10);
+        console.log(`[EMAIL] ▶ START evidenceId=${evidenceId} caseId=${caseId}`);
+
         const buffer = await StorageService.download(storageKey);
 
-        await job.updateProgress(30);
-
-        // Parse raw email text — extract headers and body into normalized plain text.
+        // Parse raw email — extract headers and body into normalized plain text.
         // Supports simple RFC-2822-style text; full MIME parsing can be added later
         // by wiring in a library like `mailparser`.
         const raw = buffer.toString("utf-8");
@@ -21,7 +20,6 @@ export class EmailProcessor {
         const headers: Record<string, string> = {};
         let bodyStartIndex = 0;
 
-        // Headers end at the first blank line
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             if (line === "" || line === undefined) {
@@ -38,7 +36,6 @@ export class EmailProcessor {
 
         const body = lines.slice(bodyStartIndex).join("\n").trim();
 
-        // Build normalized text: surface important headers + full body
         const normalizedParts: string[] = [];
         if (headers["from"]) normalizedParts.push(`From: ${headers["from"]}`);
         if (headers["to"]) normalizedParts.push(`To: ${headers["to"]}`);
@@ -53,15 +50,7 @@ export class EmailProcessor {
         const normalizedTextKey = `cases/${caseId}/normalized/${evidenceId}.txt`;
         await StorageService.upload(normalizedTextKey, Buffer.from(normalizedText), "text/plain");
 
-        await job.updateProgress(80);
-        await graphQueue.add(JOB_NAMES.EXTRACT_ENTITIES, {
-            evidenceId,
-            caseId,
-            normalizedTextKey,
-            processorVersion: "1.0.0",
-        }, { priority: JOB_PRIORITY.ENTITY_EXTRACTION });
-
-        await job.updateProgress(100);
+        console.log(`[EMAIL] ✓ DONE evidenceId=${evidenceId}`);
         return { evidenceId, caseId, normalizedTextKey };
     }
 }

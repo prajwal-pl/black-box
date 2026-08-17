@@ -7,12 +7,12 @@ import { Loader2, RefreshCw, ZoomIn, ZoomOut, Maximize2, Info, HelpCircle } from
 import { toast } from "sonner";
 
 const NODE_COLORS: Record<string, { bg: string; border: string; label: string }> = {
-    PERSON:       { bg: "#0a1a1f", border: "#06b6d4", label: "#67e8f9" },
+    PERSON: { bg: "#0a1a1f", border: "#06b6d4", label: "#67e8f9" },
     ORGANIZATION: { bg: "#130a1f", border: "#a855f7", label: "#d8b4fe" },
-    LOCATION:     { bg: "#0a1a0f", border: "#10b981", label: "#6ee7b7" },
-    OBJECT:       { bg: "#1a160a", border: "#eab308", label: "#fde047" },
-    CONCEPT:      { bg: "#1a0a14", border: "#ec4899", label: "#f9a8d4" },
-    DEFAULT:      { bg: "#111111", border: "#3f3f46", label: "#a1a1aa" },
+    LOCATION: { bg: "#0a1a0f", border: "#10b981", label: "#6ee7b7" },
+    OBJECT: { bg: "#1a160a", border: "#eab308", label: "#fde047" },
+    CONCEPT: { bg: "#1a0a14", border: "#ec4899", label: "#f9a8d4" },
+    DEFAULT: { bg: "#111111", border: "#3f3f46", label: "#a1a1aa" },
 };
 
 function nodeColor(type: string) {
@@ -197,7 +197,7 @@ export default function GraphVisualizer({ caseId }: GraphVisualizerProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loading, nodes, edges]);
 
-    const zoomIn  = () => cyRef.current?.zoom({ level: Math.min(4, cyRef.current.zoom() + 0.2), renderedPosition: { x: (containerRef.current?.offsetWidth ?? 300) / 2, y: (containerRef.current?.offsetHeight ?? 250) / 2 } });
+    const zoomIn = () => cyRef.current?.zoom({ level: Math.min(4, cyRef.current.zoom() + 0.2), renderedPosition: { x: (containerRef.current?.offsetWidth ?? 300) / 2, y: (containerRef.current?.offsetHeight ?? 250) / 2 } });
     const zoomOut = () => cyRef.current?.zoom({ level: Math.max(0.2, cyRef.current.zoom() - 0.2), renderedPosition: { x: (containerRef.current?.offsetWidth ?? 300) / 2, y: (containerRef.current?.offsetHeight ?? 250) / 2 } });
     const fitView = () => cyRef.current?.fit(undefined, 30);
 
@@ -207,9 +207,9 @@ export default function GraphVisualizer({ caseId }: GraphVisualizerProps) {
             <div className="absolute top-4 left-4 z-20 flex space-x-2">
                 {[
                     { icon: RefreshCw, action: fetchGraphData, title: "Refresh", spin: loading },
-                    { icon: ZoomIn,    action: zoomIn,          title: "Zoom in" },
-                    { icon: ZoomOut,   action: zoomOut,         title: "Zoom out" },
-                    { icon: Maximize2, action: fitView,         title: "Fit view" },
+                    { icon: ZoomIn, action: zoomIn, title: "Zoom in" },
+                    { icon: ZoomOut, action: zoomOut, title: "Zoom out" },
+                    { icon: Maximize2, action: fitView, title: "Fit view" },
                 ].map(({ icon: Icon, action, title, spin }) => (
                     <button key={title} onClick={action} title={title}
                         className="p-2 border border-hairline bg-black/60 hover:bg-black text-zinc-400 hover:text-white transition-colors">

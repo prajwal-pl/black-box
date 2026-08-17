@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import db from "../lib/db";
-import { EvidenceQueueService } from "../services/evidence.queue.service";
+import { EvidenceTaskService } from "../services/evidence.task.service";
 
 export const getContradictions: RequestHandler = async (req, res) => {
     const { caseId } = req.params as { caseId: string };
@@ -31,13 +31,10 @@ export const updateContradictionStatus: RequestHandler = async (req, res) => {
 export const triggerContradictionScan: RequestHandler = async (req, res) => {
     const { caseId } = req.params as { caseId: string };
     try {
-        const { evidenceId } = req.body;
+        const { evidenceId } = req.body as { evidenceId?: string };
         if (!evidenceId) return res.status(400).json({ error: "evidenceId is required" });
-        const job = await EvidenceQueueService.enqueueScanContradictions({
-            caseId,
-            evidenceId,
-        });
-        res.json({ jobId: job.id });
+        const handle = await EvidenceTaskService.enqueueScanContradictions({ caseId, evidenceId });
+        res.json({ jobId: handle.id });
     } catch (error) {
         res.status(500).json({ error: "Failed to trigger contradiction scan" });
     }
