@@ -1,14 +1,24 @@
-import { defineConfig } from "@trigger.dev/sdk/v3";
+import "dotenv/config";
+
+import { defineConfig } from "@trigger.dev/sdk";
 import { aptGet } from "@trigger.dev/build/extensions/core";
 
 export default defineConfig({
-    project: process.env.TRIGGER_PROJECT_ID ?? "blackbox",
+    project: process.env.TRIGGER_PROJECT_ID!,
     dirs: ["./trigger"],
     maxDuration: 3600,
     build: {
         extensions: [
-            // poppler-utils provides the pdftoppm binary used for PDF-to-image conversion in OCR
-            aptGet({ packages: ["poppler-utils"] }),
+            aptGet({
+                packages: [
+                    // pdftoppm: PDF → PNG image conversion for OCR pipeline
+                    "poppler-utils",
+                    // System Tesseract OCR binary (used instead of tesseract.js to
+                    // avoid WASM Worker thread path issues in Trigger.dev's build env)
+                    "tesseract-ocr",
+                    "tesseract-ocr-eng",
+                ],
+            }),
         ],
     },
 });

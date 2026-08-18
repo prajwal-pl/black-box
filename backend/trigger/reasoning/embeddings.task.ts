@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { EmbeddingProcessor } from "../../queues/processors/embedding.processor";
 import type { GenerateEmbeddingsPayload } from "../../types/task-payloads";
 import type { updateHypothesesTask } from "./hypotheses.task";
@@ -10,7 +10,7 @@ import type { scanContradictionsTask } from "./contradictions.task";
  */
 export const generateEmbeddingsTask = task({
     id: "generate-embeddings",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 300,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: GenerateEmbeddingsPayload) => {

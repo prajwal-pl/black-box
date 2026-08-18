@@ -1,11 +1,11 @@
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { GraphProcessor } from "../../queues/processors/graph.processor";
 import type { BuildTimelinePayload } from "../../types/task-payloads";
 
 /** Extracts timeline events from the extraction JSON and persists them to PostgreSQL. */
 export const buildTimelineTask = task({
     id: "build-timeline",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 120,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: BuildTimelinePayload) => {

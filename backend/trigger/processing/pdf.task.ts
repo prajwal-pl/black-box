@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { PdfProcessor } from "../../queues/processors/processing/pdf.processor";
 import type { ProcessEvidencePayload } from "../../types/task-payloads";
 import type { extractEntitiesTask } from "../graph/extract-entities.task";
@@ -9,7 +9,7 @@ import type { extractEntitiesTask } from "../graph/extract-entities.task";
  */
 export const processPdfTask = task({
     id: "process-pdf",
-    machine: { preset: "small-2x" }, // 1 vCPU, 1 GB RAM — handles Tesseract WASM
+    machine: "small-2x", // 1 vCPU, 1 GB RAM — handles Tesseract WASM
     maxDuration: 600, // 10 minutes for large/scanned PDFs
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     run: async (payload: ProcessEvidencePayload) => {

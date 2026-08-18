@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { GraphProcessor } from "../../queues/processors/graph.processor";
 import type { UpdateGraphPayload } from "../../types/task-payloads";
 import type { buildTimelineTask } from "./build-timeline.task";
@@ -10,7 +10,7 @@ import type { generateEmbeddingsTask } from "../reasoning/embeddings.task";
  */
 export const updateGraphTask = task({
     id: "update-graph",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 180,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: UpdateGraphPayload) => {

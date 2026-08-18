@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { ImageProcessor } from "../../queues/processors/processing/image.processor";
 import type { ProcessEvidencePayload } from "../../types/task-payloads";
 import type { extractEntitiesTask } from "../graph/extract-entities.task";
@@ -9,7 +9,7 @@ import type { extractEntitiesTask } from "../graph/extract-entities.task";
  */
 export const processImageTask = task({
     id: "process-image",
-    machine: { preset: "small-2x" }, // 1 vCPU, 1 GB RAM — handles tesseract.js WASM
+    machine: "small-2x", // 1 vCPU, 1 GB RAM — handles tesseract.js WASM
     maxDuration: 300,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: ProcessEvidencePayload) => {

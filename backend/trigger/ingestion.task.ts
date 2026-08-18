@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { IngestionProcessor, classifyByMimeType } from "../queues/processors/ingestion.processor";
 import type { UploadEvidencePayload, EvidenceTypes } from "../types/task-payloads";
 import type { processPdfTask } from "./processing/pdf.task";
@@ -14,7 +14,7 @@ import type { processEmailTask } from "./processing/email.task";
  */
 export const ingestEvidenceTask = task({
     id: "ingest-evidence",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 120,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: UploadEvidencePayload) => {

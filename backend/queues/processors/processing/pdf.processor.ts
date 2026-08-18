@@ -1,11 +1,15 @@
 import type { ProcessEvidencePayload } from "../../../types/task-payloads";
 import { StorageService } from "../../../services/storage.service";
 import { PDFParse } from "pdf-parse";
-import Tesseract from "tesseract.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { spawn } from "child_process";
+
+// NOTE: We deliberately use the system `tesseract` CLI binary instead of tesseract.js.
+// tesseract.js runs OCR via WASM Worker threads whose internal worker script path
+// (/trigger/worker-script/node/index.js) breaks in Trigger.dev's bundled environment.
+// The system binary (installed via aptGet in trigger.config.ts) has no such issue.
 
 // Minimum char threshold below which we consider pdf-parse output insufficient.
 const MIN_TEXT_LENGTH_THRESHOLD = 2000;
@@ -63,14 +67,12 @@ async function ocrPdfWithPoppler(buffer: Buffer): Promise<string> {
             if (!fileName) continue;
             const pngPath = path.join(tempDir, fileName);
 
-            console.log(`[PDF:OCR] Page ${pageNum}/${files.length} — running Tesseract OCR...`);
+            console.log(`[PDF:OCR] Page ${pageNum}/${files.length} — running system Tesseract CLI...`);
             try {
-                // In Trigger.dev, each task is an isolated process — direct Tesseract call is safe.
-                const { data: { text } } = await Tesseract.recognize(pngPath, "eng", {
-                    // Let tesseract.js handle language data (downloads and caches to /tmp)
-                    cacheMethod: "none",
-                });
-                const trimmed = text.trim();
+                // Use system `tesseract` binary: reads PNG, writes text to stdout.
+                // Args: <input> stdout -l eng
+                const result = await runCommand("tesseract", [pngPath, "stdout", "-l", "eng"]);
+                const trimmed = result.stdout.trim();
                 console.log(`[PDF:OCR] Page ${pageNum} OCR: ${trimmed.length} chars`);
                 if (trimmed.length > 0) {
                     textParts.push(trimmed);

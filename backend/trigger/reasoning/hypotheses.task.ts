@@ -1,11 +1,11 @@
-import { task } from "@trigger.dev/sdk/v3";
+import { task } from "@trigger.dev/sdk";
 import { ReasoningProcessor } from "../../queues/processors/reasoning.processor";
 import type { UpdateHypothesesPayload } from "../../types/task-payloads";
 
 /** Generates/updates investigative hypotheses via LLM + Qdrant RAG. */
 export const updateHypothesesTask = task({
     id: "update-hypotheses",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 300,
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     // Limit to 1 concurrent run per case to avoid duplicate hypothesis generation

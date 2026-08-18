@@ -1,4 +1,4 @@
-import { task, tasks } from "@trigger.dev/sdk/v3";
+import { task, tasks } from "@trigger.dev/sdk";
 import { ExtractionProcessor } from "../../queues/processors/extraction.processor";
 import type { ExtractEntitiesPayload } from "../../types/task-payloads";
 import type { updateGraphTask } from "./update-graph.task";
@@ -9,7 +9,7 @@ import type { updateGraphTask } from "./update-graph.task";
  */
 export const extractEntitiesTask = task({
     id: "extract-entities",
-    machine: { preset: "micro" },
+    machine: "micro",
     maxDuration: 300, // 5 min — LLM calls can be slow
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     run: async (payload: ExtractEntitiesPayload) => {
