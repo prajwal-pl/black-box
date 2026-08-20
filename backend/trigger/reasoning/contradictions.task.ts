@@ -6,7 +6,7 @@ import type { ScanContradictionsPayload } from "../../types/task-payloads";
 export const scanContradictionsTask = task({
     id: "scan-contradictions",
     machine: "micro",
-    maxDuration: 300,
+    maxDuration: 600, // 10 min — Qdrant similarity search + LLM comparison
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     run: async (payload: ScanContradictionsPayload) => {
         console.log(`[TASK:CONTRADICTIONS] Scanning contradictions for evidenceId=${payload.evidenceId}`);

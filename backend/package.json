@@ -8,7 +8,11 @@
     "dev": "bun --watch index.ts",
     "build": "bun --bun run prisma generate",
     "trigger:dev": "npx trigger.dev@latest dev",
-    "trigger:deploy": "npx trigger.dev@latest deploy"
+    "trigger:deploy": "npx trigger.dev@latest deploy",
+    "test": "bun test tests/processors/processors.test.ts",
+    "test:watch": "bun test --watch tests/**/*.test.ts",
+    "test:integration": "bun test tests/processors/integration.test.ts --timeout 900000",
+    "test:all": "bun test tests/processors/processors.test.ts && bun test tests/processors/integration.test.ts --timeout 900000"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

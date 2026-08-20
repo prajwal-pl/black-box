@@ -6,7 +6,7 @@ import type { UpdateHypothesesPayload } from "../../types/task-payloads";
 export const updateHypothesesTask = task({
     id: "update-hypotheses",
     machine: "micro",
-    maxDuration: 300,
+    maxDuration: 600, // 10 min — Qdrant RAG retrieval + LLM synthesis
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     // Limit to 1 concurrent run per case to avoid duplicate hypothesis generation
     queue: {

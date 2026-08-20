@@ -11,7 +11,7 @@ import type { scanContradictionsTask } from "./contradictions.task";
 export const generateEmbeddingsTask = task({
     id: "generate-embeddings",
     machine: "micro",
-    maxDuration: 300,
+    maxDuration: 600, // 10 min — large document chunking + Qdrant upsert batches
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 5_000 },
     run: async (payload: GenerateEmbeddingsPayload) => {
         console.log(`[TASK:EMBED] Generating embeddings for evidenceId=${payload.evidenceId}`);

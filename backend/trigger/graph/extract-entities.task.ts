@@ -10,7 +10,7 @@ import type { updateGraphTask } from "./update-graph.task";
 export const extractEntitiesTask = task({
     id: "extract-entities",
     machine: "micro",
-    maxDuration: 300, // 5 min — LLM calls can be slow
+    maxDuration: 900, // 15 min — large docs (182k chars) can take longer for LLM extraction
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
     run: async (payload: ExtractEntitiesPayload) => {
         console.log(`[TASK:EXTRACT] Extracting entities for evidenceId=${payload.evidenceId}`);
