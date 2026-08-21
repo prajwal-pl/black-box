@@ -54,6 +54,7 @@ async function getVectorStore() {
             batchSize: 512,
         });
         _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+            apiKey: process.env.QDRANT_API_KEY!,
             url: process.env.QDRANT_URL!,
             collectionName: process.env.QDRANT_COLLECTION!,
         });
@@ -149,8 +150,8 @@ export class ReasoningProcessor {
         const existing =
             existingHypotheses.length > 0
                 ? existingHypotheses
-                      .map((h) => `- ${h.content} (confidence: ${h.confidence})`)
-                      .join("\n")
+                    .map((h) => `- ${h.content} (confidence: ${h.confidence})`)
+                    .join("\n")
                 : "None yet";
 
         console.log(`[REASONING] Calling LLM for hypothesis generation...`);

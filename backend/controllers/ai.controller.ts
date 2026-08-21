@@ -29,6 +29,7 @@ async function getVectorStore(): Promise<QdrantVectorStore> {
             batchSize: 512,
         });
         _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+            apiKey: process.env.QDRANT_API_KEY!,
             url: process.env.QDRANT_URL!,
             collectionName: process.env.QDRANT_COLLECTION!,
         });
