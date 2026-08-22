@@ -4,9 +4,10 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run index.ts",
+    "start": "bun run dist/index.js",
     "dev": "bun --watch index.ts",
     "build": "bun --bun run prisma generate",
+    "build:prod": "bun --bun run prisma generate && bun build index.ts --outdir dist --target bun",
     "trigger:dev": "bun --bun run prisma generate && npx trigger.dev@latest dev --skip-update-check",
     "trigger:deploy": "bun --bun run prisma generate && npx trigger.dev@latest deploy --skip-update-check",
     "test": "bun test tests/processors/processors.test.ts",
