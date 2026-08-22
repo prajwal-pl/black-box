@@ -5,27 +5,75 @@ import type { GenerateEmbeddingsPayload } from "../../types/task-payloads";
 import { StorageService } from "../../services/storage.service";
 import { Document } from "@langchain/core/documents";
 
+import { QdrantClient } from "@qdrant/js-client-rest";
+
 // Lazy singleton — instantiated on first use so process.env is populated
 let _vectorStore: QdrantVectorStore | null = null;
 
+/** Embedding dimension for qwen3-embedding-8b */
+const VECTOR_SIZE = 4096;
+
+/**
+ * Qdrant Cloud enables strict mode (filtering_require_index) by default —
+ * filtered similarity searches return 400 Bad Request unless every filtered
+ * payload field has an index. All case-scoped searches filter on this key.
+ */
+const FILTER_INDEXES: { field: string; schema: "keyword" }[] = [
+    { field: "metadata.caseId", schema: "keyword" },
+];
+
+async function ensureCollection(client: QdrantClient, collectionName: string): Promise<void> {
+    let info;
+    try {
+        info = await client.getCollection(collectionName);
+        console.log(`[EMBEDDING] Collection "${collectionName}" already exists`);
+    } catch {
+        console.log(`[EMBEDDING] Collection "${collectionName}" not found — creating with dim=${VECTOR_SIZE}...`);
+        await client.createCollection(collectionName, {
+            vectors: { size: VECTOR_SIZE, distance: "Cosine" },
+        });
+        console.log(`[EMBEDDING] ✓ Collection "${collectionName}" created`);
+    }
+
+    const indexedFields = Object.keys(info?.payload_schema ?? {});
+    for (const { field, schema } of FILTER_INDEXES) {
+        if (indexedFields.includes(field)) continue;
+        console.log(`[EMBEDDING] Creating payload index on "${field}" (${schema})...`);
+        await client.createPayloadIndex(collectionName, {
+            field_name: field,
+            field_schema: schema,
+            wait: true,
+        });
+        console.log(`[EMBEDDING] ✓ Payload index on "${field}" created`);
+    }
+}
+
 async function getVectorStore() {
     if (!_vectorStore) {
+        const url = process.env.QDRANT_URL!;
+        const collectionName = process.env.QDRANT_COLLECTION!;
         console.log(
-            `[EMBEDDING] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`,
+            `[EMBEDDING] Initialising Qdrant vector store (url=${url} collection=${collectionName})...`,
         );
         const embeddings = new FireworksEmbeddings({
             model: "accounts/fireworks/models/qwen3-embedding-8b",
             batchSize: 512,
         });
+
+        // Ensure collection exists before using fromExistingCollection
+        const client = new QdrantClient({ url, apiKey: process.env.QDRANT_API_KEY });
+        await ensureCollection(client, collectionName);
+
         _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
             apiKey: process.env.QDRANT_API_KEY!,
-            url: process.env.QDRANT_URL!,
-            collectionName: process.env.QDRANT_COLLECTION!,
+            url,
+            collectionName,
         });
         console.log(`[EMBEDDING] Qdrant vector store ready`);
     }
     return _vectorStore;
 }
+
 
 const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1000,

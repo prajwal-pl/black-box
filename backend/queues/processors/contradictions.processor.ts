@@ -29,6 +29,8 @@ const ContradictionSchema = z.object({
         .describe("List of contradictions found. Empty array if none."),
 });
 
+import { QdrantClient } from "@qdrant/js-client-rest";
+
 // Lazy singletons — instantiated on first use so process.env is populated
 let _model: ChatFireworks | null = null;
 let _vectorStore: QdrantVectorStore | null = null;
@@ -48,24 +50,43 @@ function getModel() {
     return _model;
 }
 
-async function getVectorStore() {
-    if (!_vectorStore) {
-        console.log(
-            `[CONTRADICTIONS] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`,
+/**
+ * Returns the vector store, or null if the Qdrant collection doesn't exist yet.
+ * Returning null lets callers skip the search gracefully on first run.
+ */
+async function getVectorStore(): Promise<QdrantVectorStore | null> {
+    if (_vectorStore) return _vectorStore;
+
+    const url = process.env.QDRANT_URL!;
+    const collectionName = process.env.QDRANT_COLLECTION!;
+    console.log(
+        `[CONTRADICTIONS] Initialising Qdrant vector store (url=${url} collection=${collectionName})...`,
+    );
+
+    const client = new QdrantClient({ url, apiKey: process.env.QDRANT_API_KEY });
+    try {
+        await client.getCollection(collectionName);
+    } catch {
+        console.warn(
+            `[CONTRADICTIONS] ⚠ Qdrant collection "${collectionName}" does not exist yet — ` +
+            `no embeddings stored. Skipping contradiction scan.`,
         );
-        const embeddings = new FireworksEmbeddings({
-            model: "accounts/fireworks/models/qwen3-embedding-8b",
-            batchSize: 512,
-        });
-        _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
-            apiKey: process.env.QDRANT_API_KEY!,
-            url: process.env.QDRANT_URL!,
-            collectionName: process.env.QDRANT_COLLECTION!,
-        });
-        console.log(`[CONTRADICTIONS] Qdrant vector store ready`);
+        return null;
     }
+
+    const embeddings = new FireworksEmbeddings({
+        model: "accounts/fireworks/models/qwen3-embedding-8b",
+        batchSize: 512,
+    });
+    _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+        apiKey: process.env.QDRANT_API_KEY!,
+        url,
+        collectionName,
+    });
+    console.log(`[CONTRADICTIONS] Qdrant vector store ready`);
     return _vectorStore;
 }
+
 
 function buildContradictionChain() {
     return ChatPromptTemplate.fromMessages([
@@ -119,12 +140,14 @@ export class ContradictionProcessor {
         }
 
         console.log(`[CONTRADICTIONS] Connecting to Qdrant vector store...`);
-        let vectorStore;
-        try {
-            vectorStore = await getVectorStore();
-        } catch (err) {
-            console.error(`[CONTRADICTIONS] ✗ Failed to connect to Qdrant:`, err);
-            throw err;
+        const vectorStore = await getVectorStore();
+
+        if (vectorStore === null) {
+            console.warn(
+                `[CONTRADICTIONS] ⚠ Qdrant collection not ready — no prior embeddings exist. ` +
+                `Skipping contradiction scan for evidenceId=${evidenceId}.`,
+            );
+            return { evidenceId, contradictionCount: 0 };
         }
 
         console.log(

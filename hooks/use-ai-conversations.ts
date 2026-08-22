@@ -26,6 +26,7 @@ interface StoredMessage {
     role: "user" | "assistant";
     content: string;
     timestamp: string; // ISO
+    isStreaming?: boolean;
 }
 
 interface StoredConversation {
@@ -60,11 +61,11 @@ function freshConversation(): StoredConversation {
 }
 
 function toStored(m: AIMessage): StoredMessage {
-    return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp.toISOString() };
+    return { id: m.id, role: m.role, content: m.content, timestamp: m.timestamp.toISOString(), isStreaming: m.isStreaming };
 }
 
 function fromStored(m: StoredMessage): AIMessage {
-    return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp) };
+    return { id: m.id, role: m.role, content: m.content, timestamp: new Date(m.timestamp), isStreaming: m.isStreaming };
 }
 
 function loadStore(key: string): Store {
@@ -94,7 +95,12 @@ function persistStore(key: string, store: Store): void {
             ...store,
             conversations: store.conversations.map(c => ({
                 ...c,
-                messages: c.messages.filter(m => m.content.trim()),
+                messages: c.messages
+                    .filter(m => m.content.trim())
+                    .map(m => {
+                        const { isStreaming, ...rest } = m;
+                        return rest;
+                    }),
             })),
         };
         localStorage.setItem(storageKey(key), JSON.stringify(cleaned));

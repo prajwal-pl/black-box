@@ -12,7 +12,7 @@ import db from "../../lib/db";
 export const processPdfTask = task({
     id: "process-pdf",
     machine: "small-2x",
-    maxDuration: 600, // 10 min — enough for 200-page scanned PDFs with parallel OCR
+    maxDuration: 900, // 10 min — enough for 200-page scanned PDFs with parallel OCR
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
 
     // Called when all retry attempts are exhausted — mark evidence as FAILED

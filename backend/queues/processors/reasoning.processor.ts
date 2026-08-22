@@ -25,6 +25,8 @@ const HypothesisSchema = z.object({
         .describe("List of hypotheses, ordered from most to least confident"),
 });
 
+import { QdrantClient } from "@qdrant/js-client-rest";
+
 // Lazy singletons — instantiated on first use so process.env is populated
 let _model: ChatFireworks | null = null;
 let _vectorStore: QdrantVectorStore | null = null;
@@ -44,24 +46,46 @@ function getModel() {
     return _model;
 }
 
-async function getVectorStore() {
-    if (!_vectorStore) {
-        console.log(
-            `[REASONING] Initialising Qdrant vector store (url=${process.env.QDRANT_URL} collection=${process.env.QDRANT_COLLECTION})...`,
+/**
+ * Returns the vector store, or null if the Qdrant collection doesn't exist yet
+ * (e.g. before any embeddings have been generated). Returning null lets the
+ * caller skip the similarity search gracefully rather than throwing 400.
+ */
+async function getVectorStore(): Promise<QdrantVectorStore | null> {
+    if (_vectorStore) return _vectorStore;
+
+    const url = process.env.QDRANT_URL!;
+    const collectionName = process.env.QDRANT_COLLECTION!;
+    console.log(
+        `[REASONING] Initialising Qdrant vector store (url=${url} collection=${collectionName})...`,
+    );
+
+    // Check the collection exists before calling fromExistingCollection —
+    // otherwise Qdrant returns 400 Bad Request and LangChain surfaces it as an Error.
+    const client = new QdrantClient({ url, apiKey: process.env.QDRANT_API_KEY });
+    try {
+        await client.getCollection(collectionName);
+    } catch {
+        console.warn(
+            `[REASONING] ⚠ Qdrant collection "${collectionName}" does not exist yet — ` +
+            `no embeddings have been stored. Skipping similarity search.`,
         );
-        const embeddings = new FireworksEmbeddings({
-            model: "accounts/fireworks/models/qwen3-embedding-8b",
-            batchSize: 512,
-        });
-        _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
-            apiKey: process.env.QDRANT_API_KEY!,
-            url: process.env.QDRANT_URL!,
-            collectionName: process.env.QDRANT_COLLECTION!,
-        });
-        console.log(`[REASONING] Qdrant vector store ready`);
+        return null;
     }
+
+    const embeddings = new FireworksEmbeddings({
+        model: "accounts/fireworks/models/qwen3-embedding-8b",
+        batchSize: 512,
+    });
+    _vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
+        apiKey: process.env.QDRANT_API_KEY!,
+        url,
+        collectionName,
+    });
+    console.log(`[REASONING] Qdrant vector store ready`);
     return _vectorStore;
 }
+
 
 function buildHypothesisChain() {
     return ChatPromptTemplate.fromMessages([
@@ -105,34 +129,34 @@ export class ReasoningProcessor {
         );
 
         console.log(`[REASONING] Connecting to Qdrant vector store...`);
-        let vectorStore;
-        try {
-            vectorStore = await getVectorStore();
-        } catch (err) {
-            console.error(`[REASONING] ✗ Failed to connect to Qdrant:`, err);
-            throw err;
-        }
+        const vectorStore = await getVectorStore();
 
-        console.log(
-            `[REASONING] Searching Qdrant for relevant evidence chunks (caseId=${caseId})...`,
-        );
-        let relevantChunks;
-        try {
-            relevantChunks = await vectorStore.similaritySearch(
-                `forensic evidence case ${caseId}`,
-                10,
-                { must: [{ key: "metadata.caseId", match: { value: caseId } }] },
-            );
-            console.log(`[REASONING] Found ${relevantChunks.length} relevant chunks`);
-        } catch (err) {
-            console.error(`[REASONING] ✗ Qdrant similaritySearch FAILED:`, err);
-            throw err;
-        }
-
-        if (relevantChunks.length === 0) {
+        let relevantChunks: Awaited<ReturnType<QdrantVectorStore["similaritySearch"]>> = [];
+        if (vectorStore === null) {
             console.warn(
-                `[REASONING] ⚠ No relevant chunks found for caseId=${caseId} — hypotheses may be empty`,
+                `[REASONING] ⚠ Qdrant collection not ready — skipping similarity search, proceeding with 0 chunks`,
             );
+        } else {
+            console.log(
+                `[REASONING] Searching Qdrant for relevant evidence chunks (caseId=${caseId})...`,
+            );
+            try {
+                relevantChunks = await vectorStore.similaritySearch(
+                    `forensic evidence case ${caseId}`,
+                    10,
+                    { must: [{ key: "metadata.caseId", match: { value: caseId } }] },
+                );
+                console.log(`[REASONING] Found ${relevantChunks.length} relevant chunks`);
+            } catch (err) {
+                console.error(`[REASONING] ✗ Qdrant similaritySearch FAILED:`, err);
+                throw err;
+            }
+
+            if (relevantChunks.length === 0) {
+                console.warn(
+                    `[REASONING] ⚠ No relevant chunks found for caseId=${caseId} — hypotheses may be empty`,
+                );
+            }
         }
 
         console.log(`[REASONING] Fetching existing hypotheses from DB for caseId=${caseId}...`);
