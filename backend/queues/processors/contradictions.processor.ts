@@ -150,12 +150,26 @@ export class ContradictionProcessor {
             return { evidenceId, contradictionCount: 0 };
         }
 
+        // qwen3-embedding-8b has an 8192-token context window (~32k chars max).
+        // Sending the full document (e.g. 176k chars) as the embedding query causes a
+        // Fireworks API 400 error. Use only the first 8000 chars as the search probe —
+        // this is enough to find semantically similar existing evidence chunks.
+        const EMBEDDING_QUERY_MAX_CHARS = 8_000;
+        const searchQuery = newEvidenceText.length > EMBEDDING_QUERY_MAX_CHARS
+            ? newEvidenceText.slice(0, EMBEDDING_QUERY_MAX_CHARS)
+            : newEvidenceText;
+        if (newEvidenceText.length > EMBEDDING_QUERY_MAX_CHARS) {
+            console.log(
+                `[CONTRADICTIONS] Text truncated for embedding query: ${newEvidenceText.length} → ${EMBEDDING_QUERY_MAX_CHARS} chars`,
+            );
+        }
+
         console.log(
             `[CONTRADICTIONS] Searching for similar chunks in Qdrant (caseId=${caseId})...`,
         );
         let similarChunks;
         try {
-            similarChunks = await vectorStore.similaritySearch(newEvidenceText, 10, {
+            similarChunks = await vectorStore.similaritySearch(searchQuery, 10, {
                 must: [{ key: "metadata.caseId", match: { value: caseId } }],
             });
             console.log(
@@ -177,11 +191,23 @@ export class ContradictionProcessor {
             .map((chunk) => chunk.pageContent)
             .join("\n---\n");
 
+        // Truncate newEvidenceText for the LLM prompt to avoid exceeding its context window.
+        // 16000 chars ≈ 4000 tokens — leaves plenty of room for the system prompt + response.
+        const LLM_INPUT_MAX_CHARS = 16_000;
+        const newEvidenceTruncated = newEvidenceText.length > LLM_INPUT_MAX_CHARS
+            ? newEvidenceText.slice(0, LLM_INPUT_MAX_CHARS)
+            : newEvidenceText;
+        if (newEvidenceText.length > LLM_INPUT_MAX_CHARS) {
+            console.log(
+                `[CONTRADICTIONS] Text truncated for LLM prompt: ${newEvidenceText.length} → ${LLM_INPUT_MAX_CHARS} chars`,
+            );
+        }
+
         console.log(`[CONTRADICTIONS] Calling LLM for contradiction analysis...`);
         let result;
         try {
             result = await getContradictionChain().invoke({
-                newEvidence: newEvidenceText,
+                newEvidence: newEvidenceTruncated,
                 existingEvidence: existingEvidenceText,
             });
             console.log(
