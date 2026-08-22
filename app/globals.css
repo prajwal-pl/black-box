@@ -146,3 +146,29 @@ body {
   stroke-dasharray: 8, 12;
   animation: dash-flow 1.5s linear infinite;
 }
+
+@keyframes progress-flow {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.animate-progress-flow {
+  animation: progress-flow 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite linear;
+}

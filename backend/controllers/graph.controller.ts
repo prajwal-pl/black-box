@@ -6,9 +6,8 @@ export const getGraph: RequestHandler = async (req, res) => {
     const session = getDriver().session();
     try {
         const result = await session.run(
-            `MATCH (e:Entity {caseId: $caseId})
-             OPTIONAL MATCH (e)-[r:RELATIONSHIP]->(t:Entity {caseId: $caseId})
-             RETURN e, r, t`,
+            `MATCH (a:Entity {caseId: $caseId})-[r:RELATIONSHIP]->(b:Entity {caseId: $caseId})
+             RETURN a, r, b`,
             { caseId }
         );
 
@@ -16,8 +15,8 @@ export const getGraph: RequestHandler = async (req, res) => {
         const edges: object[] = [];
 
         for (const record of result.records) {
-            const e = record.get("e")?.properties;
-            const t = record.get("t")?.properties;
+            const e = record.get("a")?.properties;
+            const t = record.get("b")?.properties;
             const r = record.get("r")?.properties;
 
             if (e) nodes.set(e.id, e);

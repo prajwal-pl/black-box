@@ -2,6 +2,7 @@ import { task, tasks } from "@trigger.dev/sdk";
 import { ExtractionProcessor } from "../../queues/processors/extraction.processor";
 import type { ExtractEntitiesPayload } from "../../types/task-payloads";
 import type { updateGraphTask } from "./update-graph.task";
+import db from "../../lib/db";
 
 /**
  * Extracts entities, relationships, and events from normalized text via LLM.
@@ -12,8 +13,21 @@ export const extractEntitiesTask = task({
     machine: "micro",
     maxDuration: 900, // 15 min — large docs (182k chars) can take longer for LLM extraction
     retry: { maxAttempts: 3, factor: 2, minTimeoutInMs: 10_000 },
+
+    onFailure: async ({ payload, error }) => {
+        console.error(`[TASK:EXTRACT] ✗ All retries exhausted for evidenceId=${payload.evidenceId}. Marking FAILED.`, (error as Error).message);
+        try {
+            await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "FAILED" } });
+        } catch (dbErr) {
+            console.error(`[TASK:EXTRACT] Failed to update status to FAILED:`, dbErr);
+        }
+    },
+
     run: async (payload: ExtractEntitiesPayload) => {
         console.log(`[TASK:EXTRACT] Extracting entities for evidenceId=${payload.evidenceId}`);
+
+        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "EXTRACTING_ENTITIES" } });
+        console.log(`[TASK:EXTRACT] Evidence status → EXTRACTING_ENTITIES`);
 
         const result = await ExtractionProcessor.handle(payload);
 

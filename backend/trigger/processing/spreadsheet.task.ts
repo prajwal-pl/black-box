@@ -23,10 +23,10 @@ export const processSpreadsheetTask = task({
     run: async (payload: ProcessEvidencePayload) => {
         console.log(`[TASK:SPREADSHEET] Processing evidenceId=${payload.evidenceId}`);
 
-        const result = await SpreadsheetProcessor.handle(payload);
+        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "EXTRACTING" } });
+        console.log(`[TASK:SPREADSHEET] Evidence status → EXTRACTING`);
 
-        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "COMPLETED" } });
-        console.log(`[TASK:SPREADSHEET] Evidence status → COMPLETED`);
+        const result = await SpreadsheetProcessor.handle(payload);
 
         await tasks.trigger<typeof extractEntitiesTask>("extract-entities", {
             evidenceId: result.evidenceId,

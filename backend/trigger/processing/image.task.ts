@@ -22,10 +22,10 @@ export const processImageTask = task({
     run: async (payload: ProcessEvidencePayload) => {
         console.log(`[TASK:IMAGE] Processing evidenceId=${payload.evidenceId}`);
 
-        const result = await ImageProcessor.handle(payload);
+        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "EXTRACTING" } });
+        console.log(`[TASK:IMAGE] Evidence status → EXTRACTING`);
 
-        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "COMPLETED" } });
-        console.log(`[TASK:IMAGE] Evidence status → COMPLETED`);
+        const result = await ImageProcessor.handle(payload);
 
         await tasks.trigger<typeof extractEntitiesTask>("extract-entities", {
             evidenceId: result.evidenceId,

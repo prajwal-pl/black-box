@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { casesApi, Case } from "@/lib/api/cases";
 import { evidenceApi } from "@/lib/api/evidence";
+import { isEvidenceProcessing } from "@/lib/evidence-status";
 import CaseSettingsModal from "@/components/case/case-settings-modal";
 import {
     ArrowLeft, Layers, GitFork, Clock, BrainCircuit,
@@ -45,12 +46,12 @@ export default function LeftCaseSidebar({ caseId, isCollapsed, onToggleCollapse 
         enabled: !!caseId,
         refetchInterval: (query) => {
             const list = query.state.data as any[] | undefined;
-            return list?.some((e) => e.status === "PENDING" || e.status === "PROCESSING") ? 3000 : false;
+            return list?.some((e) => isEvidenceProcessing(e.status)) ? 3000 : false;
         },
     });
 
     const processingCount = evidenceList?.filter(
-        (e) => e.status === "PENDING" || e.status === "PROCESSING"
+        (e) => isEvidenceProcessing(e.status)
     ).length ?? 0;
 
     const isActive = (href: string) =>

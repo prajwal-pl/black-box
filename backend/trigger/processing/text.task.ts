@@ -23,10 +23,10 @@ export const processTextTask = task({
     run: async (payload: ProcessEvidencePayload) => {
         console.log(`[TASK:TEXT] Processing evidenceId=${payload.evidenceId}`);
 
-        const result = await TextProcessor.handle(payload);
+        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "EXTRACTING" } });
+        console.log(`[TASK:TEXT] Evidence status → EXTRACTING`);
 
-        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "COMPLETED" } });
-        console.log(`[TASK:TEXT] Evidence status → COMPLETED`);
+        const result = await TextProcessor.handle(payload);
 
         await tasks.trigger<typeof extractEntitiesTask>("extract-entities", {
             evidenceId: result.evidenceId,

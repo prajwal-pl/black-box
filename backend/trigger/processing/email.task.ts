@@ -23,10 +23,10 @@ export const processEmailTask = task({
     run: async (payload: ProcessEvidencePayload) => {
         console.log(`[TASK:EMAIL] Processing evidenceId=${payload.evidenceId}`);
 
-        const result = await EmailProcessor.handle(payload);
+        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "EXTRACTING" } });
+        console.log(`[TASK:EMAIL] Evidence status → EXTRACTING`);
 
-        await db.evidence.update({ where: { id: payload.evidenceId }, data: { status: "COMPLETED" } });
-        console.log(`[TASK:EMAIL] Evidence status → COMPLETED`);
+        const result = await EmailProcessor.handle(payload);
 
         await tasks.trigger<typeof extractEntitiesTask>("extract-entities", {
             evidenceId: result.evidenceId,

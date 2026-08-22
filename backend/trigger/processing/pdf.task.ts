@@ -7,7 +7,7 @@ import db from "../../lib/db";
 /**
  * Processes PDF evidence: pdf-parse + parallel Tesseract OCR fallback via pdftoppm.
  * Uses small-2x machine (1 vCPU / 1 GB RAM) for OCR workload.
- * Status lifecycle: PROCESSING (set by ingest) → COMPLETED on success, FAILED on terminal failure.
+ * Status lifecycle: PROCESSING (set by ingest) → EXTRACTING → downstream stages → COMPLETED (set by scan-contradictions), FAILED on terminal failure.
  */
 export const processPdfTask = task({
     id: "process-pdf",
@@ -34,14 +34,13 @@ export const processPdfTask = task({
     run: async (payload: ProcessEvidencePayload) => {
         console.log(`[TASK:PDF] Processing evidenceId=${payload.evidenceId}`);
 
-        const result = await PdfProcessor.handle(payload);
-
-        // Mark evidence as COMPLETED — the heavy lifting is done
         await db.evidence.update({
             where: { id: payload.evidenceId },
-            data: { status: "COMPLETED" },
+            data: { status: "EXTRACTING" },
         });
-        console.log(`[TASK:PDF] Evidence status → COMPLETED`);
+        console.log(`[TASK:PDF] Evidence status → EXTRACTING`);
+
+        const result = await PdfProcessor.handle(payload);
 
         // Trigger entity extraction with the normalized text
         await tasks.trigger<typeof extractEntitiesTask>("extract-entities", {

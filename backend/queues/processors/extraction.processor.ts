@@ -112,6 +112,7 @@ function buildExtractionChain() {
 Rules:
 - Only extract what is EXPLICITLY stated. Do not infer or assume.
 - Generate a new UUID for each entity id.
+- Every entity you list MUST appear in at least one relationship. If an entity has no explicit relationship to another entity, do not include it.
 - If a date is mentioned but not precise, use your best ISO8601 approximation.
 - Confidence scores reflect how certain you are based on the text alone.
 - REUSE existing entity IDs when the same entity is mentioned — do not create duplicates.

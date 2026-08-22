@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { evidenceApi, Evidence } from "@/lib/api/evidence";
+import { EVIDENCE_STAGE_META, isEvidenceProcessing } from "@/lib/evidence-status";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,7 @@ export default function EvidenceWorkspacePage() {
         enabled: !!caseId,
         refetchInterval: (query) => {
             const list = query.state.data as Evidence[] | undefined;
-            return list?.some(e => e.status === "PENDING" || e.status === "PROCESSING") ? 3000 : false;
+            return list?.some(e => isEvidenceProcessing(e.status)) ? 800 : false;
         },
     });
 
@@ -294,6 +295,8 @@ export default function EvidenceWorkspacePage() {
                             <div className="border border-zinc-800 divide-y divide-zinc-900 bg-zinc-950/10">
                                 {evidenceList.map(e => {
                                     const isSel = selected?.id === e.id;
+                                    const stage = EVIDENCE_STAGE_META[e.status];
+                                    const isActive = isEvidenceProcessing(e.status) && e.status !== "PENDING";
                                     return (
                                         <div 
                                             key={e.id} 
@@ -312,17 +315,49 @@ export default function EvidenceWorkspacePage() {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4 shrink-0">
-                                                <span className={`text-[10px] px-1.5 py-0.5 border leading-none font-bold font-mono tracking-wider ${
-                                                    e.status === "COMPLETED"
-                                                        ? "text-success border-success/40 bg-success/5"
-                                                        : e.status === "PROCESSING"
-                                                        ? "text-success border-success/40 bg-success/5 animate-pulse"
-                                                        : e.status === "PENDING"
-                                                        ? "text-zinc-400 border-zinc-700 bg-zinc-950"
-                                                        : "text-warning border-warning/40 bg-warning/5"
-                                                }`}>
-                                                    {e.status}
-                                                </span>
+                                                <div className="flex flex-col w-36 shrink-0 justify-center mr-2">
+                                                    <div className="flex justify-between items-center mb-1.5">
+                                                        <span className={`text-[9px] font-bold font-mono uppercase tracking-wider ${
+                                                            e.status === "COMPLETED" ? "text-success"
+                                                            : e.status === "FAILED" ? "text-warning"
+                                                            : isActive ? "text-success animate-pulse"
+                                                            : "text-zinc-500"
+                                                        }`}>
+                                                            {stage.label}
+                                                        </span>
+                                                        {e.status === "COMPLETED" && (
+                                                            <CheckCircle size={10} className="text-success" />
+                                                        )}
+                                                        {e.status === "FAILED" && (
+                                                            <X size={10} className="text-warning" />
+                                                        )}
+                                                        {e.status === "PENDING" && (
+                                                            <Clock size={10} className="text-zinc-500" />
+                                                        )}
+                                                        {isActive && (
+                                                            <Loader2 size={10} className="text-success animate-spin" />
+                                                        )}
+                                                    </div>
+                                                    <div className={`h-1.5 w-full overflow-hidden relative ${
+                                                        e.status === "FAILED" ? "bg-warning/20" : "bg-zinc-900/80"
+                                                    }`}>
+                                                        {e.status === "COMPLETED" ? (
+                                                            <div className="absolute top-0 left-0 h-full bg-success w-full" />
+                                                        ) : e.status === "FAILED" ? (
+                                                            <div className="absolute top-0 left-0 h-full bg-warning w-full" />
+                                                        ) : e.status === "PENDING" ? (
+                                                            <div className="absolute top-0 left-0 h-full bg-zinc-700 w-full opacity-20" />
+                                                        ) : (
+                                                            <div
+                                                                className="absolute top-0 left-0 h-full bg-success/40 transition-all duration-700 ease-out overflow-hidden"
+                                                                style={{ width: `${stage.progress}%` }}
+                                                            >
+                                                                <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-success to-transparent opacity-80 animate-shimmer" />
+                                                                <div className="absolute right-0 top-0 bottom-0 w-1 bg-white shadow-[0_0_8px_3px_rgba(95,166,87,0.9)]" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                                 <AlertDialog>
                                                     <AlertDialogTrigger asChild>
                                                         <button

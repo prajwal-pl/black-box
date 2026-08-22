@@ -154,7 +154,7 @@ export default function DashboardPage() {
                         </div>
                     ) : cases && cases.length > 0 ? (
                         <div className="border border-hairline bg-zinc-950/20 divide-y divide-hairline">
-                            {cases.map((c) => (
+                            {[...cases].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((c) => (
                                 <div
                                     key={c.id}
                                     onClick={() => router.push(`/cases/${c.id}`)}

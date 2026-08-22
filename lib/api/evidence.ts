@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { EvidenceStatus } from "@/lib/evidence-status";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -10,7 +11,7 @@ export interface Evidence {
     fileUrl: string;
     mimeType: string;
     storageKey: string;
-    status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+    status: EvidenceStatus;
     createdAt: string;
     updatedAt: string;
 }
@@ -21,12 +22,12 @@ export interface EvidenceListResponse {
 
 export interface EvidenceStatusResponse {
     id: string;
-    status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+    status: EvidenceStatus;
 }
 
 export interface UploadResponse {
     evidenceId: string;
-    status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+    status: EvidenceStatus;
     message?: string;
 }
 
