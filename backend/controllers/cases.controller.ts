@@ -109,8 +109,8 @@ export const deleteCase: RequestHandler = async (req, res) => {
             return res.status(404).json({ message: "Case not found" });
         }
 
-        // Delete related evidence first to avoid FK constraint violations
-        await db.evidence.deleteMany({ where: { caseId: id as string } });
+        // All child rows (Evidence, Hypothesis, Contradictions, TimelineEvent)
+        // are deleted automatically via onDelete: Cascade in the schema.
         await db.case.delete({ where: { id: id as string } });
 
         res.json({ message: "Case deleted successfully" });

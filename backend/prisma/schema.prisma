@@ -120,7 +120,7 @@ model Evidence {
     mimeType    String
     storageKey  String
     status      EvidenceStatus @default(PENDING)
-    case        Case           @relation(fields: [caseId], references: [id])
+    case        Case           @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -134,7 +134,7 @@ model Contradictions {
     severity    Severity            @default(LOW)
     status      ContradictionStatus @default(OPEN)
     evidenceIds String[]
-    case        Case                @relation(fields: [caseId], references: [id])
+    case        Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -148,7 +148,7 @@ model TimelineEvent {
     evidenceId  String
     occuredAt   DateTime?
     confidence  Float
-    case        Case      @relation(fields: [caseId], references: [id])
+    case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -160,7 +160,7 @@ model Hypothesis {
     content    String
     confidence Float
     status     HypothesisStatus @default(ACTIVE)
-    case       Case             @relation(fields: [caseId], references: [id])
+    case       Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
